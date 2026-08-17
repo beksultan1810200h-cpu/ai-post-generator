@@ -16,13 +16,19 @@ load_dotenv()
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
 
-# Hugging Face Inference API. Get a FREE token at https://huggingface.co/settings/tokens
-# and set it as the HF_API_KEY environment variable on your hosting platform.
-# The app will still run without a key, but /generate will return an error
-# telling you to configure one (Hugging Face requires auth for inference calls).
+# Hugging Face Inference Providers API. Get a FREE token at
+# https://huggingface.co/settings/tokens and set it as the HF_API_KEY
+# environment variable on your hosting platform.
+# NOTE: the old "api-inference.huggingface.co/models/<id>" endpoint was
+# permanently discontinued by Hugging Face (returns 410 / fails DNS lookup).
+# All inference now goes through the OpenAI-compatible chat-completions
+# router below.
 HF_API_KEY = os.environ.get("HF_API_KEY", "")
-HF_MODEL = os.environ.get("HF_MODEL", "mistralai/Mixtral-8x7B-Instruct-v0.1")
-HF_API_URL = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+HF_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
+# Optional: pin a specific inference provider by appending ":provider" to
+# HF_MODEL, e.g. "meta-llama/Llama-3.1-8B-Instruct:novita". Leave it off to
+# let Hugging Face auto-pick an available provider for the model.
+HF_API_URL = "https://router.huggingface.co/v1/chat/completions"
 
 app = Flask(__name__, static_folder=None)
 CORS(app)  # allow requests from any origin (frontend can be hosted separately)
@@ -76,19 +82,25 @@ def call_huggingface(prompt: str) -> str:
             "переменную окружения HF_API_KEY."
         )
 
-    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
-    instruct_prompt = (
-        "<s>[INST] Ты — маркетолог-копирайтер. Напиши короткий продающий "
-        f"пост на основе следующего описания товара: {prompt} [/INST]"
-    )
+    headers = {
+        "Authorization": f"Bearer {HF_API_KEY}",
+        "Content-Type": "application/json",
+    }
     payload = {
-        "inputs": instruct_prompt,
-        "parameters": {
-            "max_new_tokens": 300,
-            "temperature": 0.7,
-            "return_full_text": False,
-        },
-        "options": {"wait_for_model": True},
+        "model": HF_MODEL,
+        "messages": [
+            {
+                "role": "system",
+                "content": "Ты — маркетолог-копирайтер. Пиши короткие продающие посты на русском.",
+            },
+            {
+                "role": "user",
+                "content": f"Напиши короткий продающий пост на основе описания товара: {prompt}",
+            },
+        ],
+        "max_tokens": 400,
+        "temperature": 0.7,
+        "stream": False,
     }
 
     resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=60)
@@ -98,13 +110,12 @@ def call_huggingface(prompt: str) -> str:
 
     data = resp.json()
 
-    # HF text-generation responses are usually a list of {"generated_text": "..."}
-    if isinstance(data, list) and data and "generated_text" in data[0]:
-        return data[0]["generated_text"].strip()
-    if isinstance(data, dict) and "error" in data:
-        raise RuntimeError(f"HuggingFace API error: {data['error']}")
-
-    return str(data)
+    try:
+        return data["choices"][0]["message"]["content"].strip()
+    except (KeyError, IndexError, TypeError):
+        if isinstance(data, dict) and "error" in data:
+            raise RuntimeError(f"HuggingFace API error: {data['error']}")
+        raise RuntimeError(f"Неожиданный формат ответа HuggingFace: {str(data)[:300]}")
 
 
 # --------------------------------------------------------------------------
