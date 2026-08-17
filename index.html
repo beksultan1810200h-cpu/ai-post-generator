@@ -3,845 +3,779 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Генератор постов и карточек товаров</title>
+<title>Конструктор карточек для маркетплейсов</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
-    --bg: #0f1117;
-    --card: #1a1d29;
-    --card2: #12141d;
-    --accent: #6c5ce7;
-    --accent2: #00d2a0;
-    --text: #eef0f6;
-    --muted: #9096ab;
-    --danger: #ff6b6b;
+    --page-bg: #0f1117;
+    --panel-bg: #171a24;
+    --panel-bg2: #1e2230;
     --border: #2a2e3d;
+    --text-main: #eef0f6;
+    --text-muted: #9096ab;
+    --accent-ui: #6c5ce7;
+    --accent-ui2: #00d2a0;
+    --danger: #ff6b6b;
   }
   * { box-sizing: border-box; }
   body {
     margin: 0;
     font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
     background: linear-gradient(160deg, #0f1117, #171a24);
-    color: var(--text);
+    color: var(--text-main);
     min-height: 100vh;
-    padding: 0 16px 60px;
+    padding: 20px 14px 60px;
   }
-  .wrap { max-width: 860px; margin: 0 auto; }
+  .wrap { max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  p.subtitle { color: var(--text-muted); margin-top: 0; font-size: 13.5px; }
 
-  /* ---------- Header / tabs ---------- */
-  header.topbar {
-    max-width: 860px;
-    margin: 0 auto;
-    padding: 20px 0 8px;
-  }
-  h1 { font-size: 21px; margin: 0 0 4px; }
-  p.subtitle { color: var(--muted); margin: 0 0 16px; font-size: 13.5px; }
-
-  .tabs {
-    display: flex;
-    gap: 8px;
-    background: var(--card2);
-    border-radius: 12px;
-    padding: 5px;
+  .panel {
+    background: var(--panel-bg);
     border: 1px solid var(--border);
-  }
-  .tab-btn {
-    flex: 1;
-    background: transparent;
-    border: none;
-    color: var(--muted);
-    padding: 10px 14px;
-    border-radius: 9px;
-    font-size: 14.5px;
-    font-weight: 600;
-    cursor: pointer;
-    margin: 0;
-    width: auto;
-    transition: background .15s, color .15s;
-  }
-  .tab-btn.active {
-    background: linear-gradient(120deg, var(--accent), #a29bfe);
-    color: #fff;
-  }
-
-  .tab-panel { display: none; }
-  .tab-panel.active { display: block; }
-
-  /* ---------- Shared card style ---------- */
-  .card {
-    background: var(--card);
     border-radius: 14px;
     padding: 18px;
-    margin-top: 18px;
+    margin-top: 16px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.25);
   }
-  textarea, input[type=text], select {
-    width: 100%;
-    background: var(--card2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    color: var(--text);
-    padding: 12px;
-    font-size: 15px;
+  .panel h2 { font-size: 15px; margin: 0 0 12px; display:flex; align-items:center; gap:8px; }
+
+  label { display:block; font-size: 12.5px; color: var(--text-muted); margin: 10px 0 4px; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; background: #12141d; border: 1px solid var(--border);
+    border-radius: 9px; color: var(--text-main); padding: 10px 12px; font-size: 14.5px;
     font-family: inherit;
   }
-  textarea { min-height: 100px; resize: vertical; }
-  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); }
-  label.field-label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
-  label.field-label:first-child { margin-top: 0; }
+  textarea { min-height: 90px; resize: vertical; }
+  input:focus, textarea:focus, select:focus { outline: none; border-color: var(--accent-ui); }
+  .char-counter { font-size: 11px; color: var(--text-muted); text-align: right; margin-top: 2px; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 12px; }
+  @media (max-width: 640px) { .form-grid { grid-template-columns: 1fr; } }
 
-  button {
-    margin-top: 12px;
-    background: linear-gradient(120deg, var(--accent), #a29bfe);
-    color: white;
-    border: none;
-    padding: 12px 20px;
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 600;
-    cursor: pointer;
-    width: 100%;
+  button, .btn {
+    background: linear-gradient(120deg, var(--accent-ui), #a29bfe);
+    color: white; border: none; padding: 11px 18px; border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit;
   }
-  button:disabled { opacity: 0.6; cursor: not-allowed; }
-  button.secondary {
-    background: var(--card2);
-    border: 1px solid var(--border);
-    color: var(--text);
-  }
-  button.danger-outline {
-    background: transparent;
-    border: 1px solid var(--danger);
-    color: var(--danger);
-  }
-  .btn-row { display: flex; gap: 10px; margin-top: 12px; }
-  .btn-row button { margin-top: 0; }
+  button:disabled { opacity: 0.55; cursor: not-allowed; }
+  button.secondary { background: #262a3a; }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text-main); }
+  button.danger-btn { background: linear-gradient(120deg, #ff6b6b, #ff8e8e); }
+  button.block-btn { width: 100%; margin-top: 12px; }
+  .btn-row { display:flex; gap:8px; flex-wrap:wrap; margin-top: 12px; }
+  .btn-row button { flex: 1 1 auto; }
 
-  .status { margin-top: 10px; font-size: 13px; color: var(--muted); min-height: 18px; }
+  .status { margin-top: 10px; font-size: 13px; color: var(--text-muted); min-height: 18px; }
   .status.error { color: var(--danger); }
+  .status.ok { color: var(--accent-ui2); }
 
-  .result-box {
-    margin-top: 14px;
-    background: var(--card2);
-    border-left: 3px solid var(--accent2);
-    padding: 14px;
-    border-radius: 8px;
-    white-space: pre-wrap;
-    font-size: 14.5px;
-    line-height: 1.5;
-    display: none;
+  /* ---------- Editor layout ---------- */
+  #editorSection { display: none; }
+  .editor-grid { display: grid; grid-template-columns: 1fr 300px; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .editor-grid { grid-template-columns: 1fr; } }
+
+  .toolbar { display:flex; flex-wrap:wrap; gap: 10px; align-items:center; margin-bottom: 14px; }
+  .mp-tabs { display:flex; gap:6px; background:#12141d; padding:4px; border-radius: 10px; }
+  .mp-tabs button { padding: 7px 14px; font-size: 13px; background: transparent; color: var(--text-muted); }
+  .mp-tabs button.active { background: var(--accent-ui); color: white; }
+  .style-select { max-width: 180px; }
+
+  .card-stage {
+    background: #0b0c12; border-radius: 16px; padding: 34px 20px;
+    display:flex; justify-content:center; perspective: 1400px;
+  }
+  .card-wrapper {
+    width: 100%; max-width: 360px;
+    background: var(--card-bg, #1a1a1a);
+    color: var(--text, #eee);
+    border-radius: var(--radius, 16px);
+    box-shadow: var(--shadow, 0 20px 50px rgba(0,0,0,.3));
+    font-family: var(--font, inherit);
+    padding: 18px;
+    transition: background-color .5s ease, color .5s ease, box-shadow .5s ease, border-radius .5s ease, transform .3s ease;
+    transform-style: preserve-3d;
+  }
+  .card-wrapper:hover { transform: scale(1.02); }
+  .card-wrapper.rotate-3d { animation: spin3d 1.2s ease; }
+  @keyframes spin3d { from { transform: rotateY(0deg); } to { transform: rotateY(360deg); } }
+
+  .mp-badge {
+    display:inline-block; font-size: 11px; font-weight: 700; letter-spacing:.03em;
+    padding: 4px 10px; border-radius: 999px; margin-bottom: 12px; color: white;
+  }
+  .layout-wb .mp-badge { background: #7c1fd6; }
+  .layout-ozon .mp-badge { background: #005bff; }
+  .layout-ym .mp-badge { background: #ffcc00; color:#222; }
+
+  #blocksContainer { display: flex; flex-direction: column; gap: 12px; }
+  .mp-block { display:flex; gap:8px; align-items:flex-start; }
+  .drag-handle { cursor: grab; color: var(--muted, #888); opacity: .5; padding-top: 4px; flex: 0 0 auto; }
+  .drag-handle:hover { opacity: 1; }
+  .block-inner { flex: 1; min-width: 0; }
+  [contenteditable="true"] { outline: none; border-radius: 6px; padding: 2px 4px; }
+  [contenteditable="true"]:hover { background: rgba(255,255,255,0.05); }
+  [contenteditable="true"]:focus { background: rgba(255,255,255,0.08); box-shadow: 0 0 0 1px var(--accent, #888); }
+
+  .block-title { font-size: 18px; font-weight: 700; line-height: 1.3; }
+  .block-price { font-size: 22px; font-weight: 800; color: var(--accent, #d4af37); }
+  .block-rating { font-size: 13px; color: var(--muted, #999); }
+  ul.block-advantages { margin: 0; padding-left: 18px; font-size: 13.5px; line-height: 1.6; }
+  table.block-characteristics { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  table.block-characteristics td { padding: 5px 4px; border-bottom: 1px dashed var(--muted, #444); }
+  table.block-characteristics td:first-child { color: var(--muted, #999); width: 45%; }
+
+  .cart-btn {
+    width: 100%; background: var(--accent, #6c5ce7); color: #fff; border: none;
+    padding: 12px; border-radius: var(--radius, 10px); font-weight: 700; font-size: 14px;
+    animation: pulseCart 2.4s infinite;
+  }
+  @keyframes pulseCart {
+    0% { box-shadow: 0 0 0 0 rgba(255,255,255,.35); }
+    70% { box-shadow: 0 0 0 14px rgba(255,255,255,0); }
+    100% { box-shadow: 0 0 0 0 rgba(255,255,255,0); }
   }
 
-  .history-item { border-bottom: 1px solid #262a38; padding: 12px 0; }
-  .history-item:last-child { border-bottom: none; }
-  .history-prompt { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
-  .history-result { font-size: 14px; white-space: pre-wrap; }
-  .history-date { font-size: 11px; color: #545a70; margin-top: 6px; }
+  .block-photo img { width: 100%; aspect-ratio: 1/1; object-fit: cover; border-radius: calc(var(--radius, 16px) - 6px); background:#333; }
+  .photo-controls { display:flex; gap:6px; margin-top:8px; }
+  .photo-controls button, .photo-controls label { flex:1; font-size: 11.5px; padding: 8px 6px; text-align:center; }
+  .upload-btn { background:#262a3a; color: var(--text-main); border-radius:10px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
 
-  .section-title {
-    font-size: 15px; font-weight: 600; margin-bottom: 8px;
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .refresh-btn {
-    background: none; width: auto; padding: 4px 10px;
-    font-size: 12px; color: var(--accent2); margin: 0;
-  }
-  .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
-  code.uid { color: var(--accent2); font-size: 11px; }
+  .fade-in-block { opacity: 0; animation: fadeInUp .6s ease forwards; }
+  @keyframes fadeInUp { from { opacity:0; transform: translateY(16px); } to { opacity:1; transform: translateY(0); } }
 
-  /* ---------- Card constructor: photo style picker ---------- */
-  .photo-source-row { display: flex; gap: 10px; margin-top: 12px; }
-  .photo-source-row button { margin-top: 0; }
-  #uploadPreview {
-    margin-top: 10px; max-width: 160px; border-radius: 10px; display: none;
-  }
-  .style-picker {
-    display: none;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-    margin-top: 10px;
-  }
-  .style-picker.visible { display: grid; }
-  .style-chip {
-    background: var(--card2);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 10px;
-    text-align: center;
-    font-size: 13px;
-    cursor: pointer;
-  }
-  .style-chip.selected { border-color: var(--accent); background: #201a3a; }
+  /* style presets */
+  [data-style="premium"] { --bg:#0d0d0d; --card-bg:#1a1a1a; --text:#f5e6c8; --accent:#d4af37; --muted:#a89a6d; --radius:18px; --shadow:0 20px 50px rgba(212,175,55,.18); --font:'Georgia','Times New Roman',serif; }
+  [data-style="minimal"] { --bg:#ffffff; --card-bg:#fafafa; --text:#1a1a1a; --accent:#333333; --muted:#888888; --radius:6px; --shadow:0 4px 16px rgba(0,0,0,.1); --font:'Helvetica Neue',Arial,sans-serif; }
+  [data-style="kids"] { --bg:#fff0f6; --card-bg:#ffffff; --text:#4a2c40; --accent:#ff8fab; --muted:#c98ea8; --radius:28px; --shadow:0 10px 30px rgba(255,143,171,.35); --font:'Trebuchet MS','Comic Sans MS',sans-serif; }
+  [data-style="tech"] { --bg:#050810; --card-bg:#0c1220; --text:#c9f7ff; --accent:#00f0ff; --muted:#4d7a85; --radius:4px; --shadow:0 0 40px rgba(0,240,255,.28); --font:'Consolas','Courier New',monospace; }
+  [data-style="eco"] { --bg:#f1f7ee; --card-bg:#ffffff; --text:#2f3e2a; --accent:#5a8f3c; --muted:#8fa885; --radius:16px; --shadow:0 10px 30px rgba(90,143,60,.2); --font:'Verdana',sans-serif; }
 
-  .variants-grid {
-    display: none;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
-    margin-top: 12px;
+  /* side panel */
+  .side-panel .row { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top: 10px; }
+  .side-panel .row label { margin: 0; }
+  .meta-box { font-size: 12.5px; color: var(--text-muted); line-height: 1.7; margin-top: 8px; }
+  .meta-box b { color: var(--text-main); }
+  input[type=color] { width: 40px; height: 30px; padding: 0; border: none; background: none; cursor:pointer; }
+  input[type=range] { width: 120px; }
+
+  /* modal */
+  .modal-overlay {
+    display:none; position: fixed; inset:0; background: rgba(0,0,0,.6);
+    align-items:center; justify-content:center; z-index: 50; padding: 16px;
   }
-  .variants-grid.visible { display: grid; }
-  .variant-thumb {
-    position: relative;
-    border-radius: 10px;
-    overflow: hidden;
-    border: 2px solid var(--border);
-    cursor: pointer;
+  .modal-overlay.open { display:flex; }
+  .modal-box {
+    background: var(--panel-bg2); border-radius: 14px; padding: 20px; max-width: 560px;
+    width: 100%; max-height: 85vh; overflow-y:auto; border:1px solid var(--border);
   }
-  .variant-thumb.selected { border-color: var(--accent2); }
-  .variant-thumb img { width: 100%; height: 110px; object-fit: cover; display: block; }
-  .variant-thumb .variant-label {
-    position: absolute; bottom: 0; left: 0; right: 0;
-    background: rgba(0,0,0,0.55); font-size: 11px; padding: 3px 6px;
-  }
+  .modal-box h3 { margin-top:0; font-size:16px; }
+  .photo-type-grid { display:grid; grid-template-columns: repeat(2,1fr); gap: 8px; margin: 10px 0; }
+  .photo-type-grid button { background:#262a3a; padding: 10px; font-size:13px; }
+  .photo-type-grid button.active { background: var(--accent-ui); }
+  .photo-results { display:grid; grid-template-columns: repeat(2,1fr); gap: 10px; margin-top: 14px; }
+  .photo-results img { width:100%; aspect-ratio:1/1; object-fit:cover; border-radius:10px; cursor:pointer; border: 2px solid transparent; }
+  .photo-results img:hover { border-color: var(--accent-ui2); }
+  .modal-close { float:right; background:none; border:none; color: var(--text-muted); font-size:20px; cursor:pointer; padding:0; }
 
-  /* ---------- Card editor ---------- */
-  #cardEditorWrap { display: none; margin-top: 18px; }
-  #cardEditorWrap.visible { display: block; }
-
-  .editor-toolbar {
-    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
-    margin-bottom: 14px;
-  }
-  .editor-toolbar select { width: auto; flex: 1; min-width: 160px; }
-  .editor-toolbar button { width: auto; margin-top: 0; padding: 10px 16px; white-space: nowrap; }
-
-  #cardCanvas {
-    border-radius: 16px;
-    padding: 22px;
-    transition: background .2s, color .2s, font-family .2s;
-  }
-  .block {
-    background: rgba(255,255,255,0.03);
-    border: 1px dashed rgba(255,255,255,0.15);
-    border-radius: 12px;
-    padding: 14px;
-    margin-bottom: 12px;
-    cursor: grab;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
-    transition: box-shadow .15s, transform .15s;
-  }
-  .block:active { cursor: grabbing; }
-  .block.sortable-ghost { opacity: 0.4; }
-  .block.sortable-chosen { box-shadow: 0 6px 18px rgba(0,0,0,0.35); transform: scale(1.01); }
-  .block-label {
-    font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
-    opacity: .55; margin-bottom: 6px;
-  }
-  .block [contenteditable] { outline: none; }
-  .block [contenteditable]:focus { outline: 1px dashed var(--accent2); border-radius: 4px; }
-
-  .block-headline { font-size: 22px; font-weight: 700; }
-  .block-description { font-size: 14.5px; line-height: 1.6; }
-  .block-advantages ul { margin: 0; padding-left: 20px; }
-  .block-advantages li { margin-bottom: 4px; }
-  .block-photo img { width: 100%; max-height: 260px; object-fit: cover; border-radius: 10px; }
-  .block-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
-  .block-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
-  .block-table td:first-child { opacity: .65; width: 45%; }
-
-  .desc-variant-row { display: flex; gap: 6px; margin-top: 8px; }
-  .desc-variant-row button {
-    width: auto; margin: 0; padding: 4px 10px; font-size: 11px;
-    background: var(--card2); border: 1px solid var(--border); color: var(--muted);
-  }
-  .desc-variant-row button.active { border-color: var(--accent2); color: var(--accent2); }
-
-  /* Style presets applied to #cardCanvas via class */
-  #cardCanvas.style-minimal { background: #ffffff; color: #1a1a1a; font-family: 'Helvetica Neue', Arial, sans-serif; }
-  #cardCanvas.style-minimal .block { background: #fafafa; border: 1px solid #eee; }
-  #cardCanvas.style-minimal .block-table td { border-bottom-color: #eee; }
-
-  #cardCanvas.style-luxury { background: #14110f; color: #ecdfc8; font-family: Georgia, 'Times New Roman', serif; }
-  #cardCanvas.style-luxury .block { background: #1c1712; border: 1px solid #4a3d26; }
-  #cardCanvas.style-luxury .block-headline { color: #d4af7a; letter-spacing: .03em; }
-  #cardCanvas.style-luxury .block-table td { border-bottom-color: #4a3d26; }
-
-  #cardCanvas.style-kids { background: #fff6e0; color: #3a2e5c; font-family: 'Comic Sans MS', 'Trebuchet MS', sans-serif; }
-  #cardCanvas.style-kids .block { background: #ffffff; border: 3px dashed #ff9ecb; border-radius: 18px; }
-  #cardCanvas.style-kids .block-headline { color: #ff6fa5; }
-
-  #cardCanvas.style-techno { background: #0a0e14; color: #baf7ff; font-family: 'Consolas', 'Courier New', monospace; }
-  #cardCanvas.style-techno .block { background: #0f1620; border: 1px solid #16f0ff44; }
-  #cardCanvas.style-techno .block-headline { color: #16f0ff; text-transform: uppercase; }
-  #cardCanvas.style-techno .block-table td { border-bottom-color: #16f0ff33; }
-
-  #cardCanvas.style-eco { background: #f2f7ec; color: #2c3d24; font-family: 'Trebuchet MS', sans-serif; }
-  #cardCanvas.style-eco .block { background: #e7f0dd; border: 1px solid #c3d9ad; border-radius: 20px; }
-  #cardCanvas.style-eco .block-headline { color: #4f7a2e; }
-
-  .cards-history-item {
-    display: flex; align-items: center; gap: 10px;
-    border-bottom: 1px solid #262a38; padding: 10px 0;
-  }
-  .cards-history-item:last-child { border-bottom: none; }
-  .cards-history-item .chi-info { flex: 1; min-width: 0; }
-  .cards-history-item .chi-title { font-size: 14px; font-weight: 600; }
-  .cards-history-item .chi-date { font-size: 11px; color: #545a70; }
-  .cards-history-item button {
-    width: auto; margin: 0; padding: 6px 12px; font-size: 12px;
-  }
+  /* history */
+  .history-list { display:grid; grid-template-columns: repeat(auto-fill,minmax(150px,1fr)); gap: 12px; }
+  .history-item { background:#12141d; border:1px solid var(--border); border-radius:10px; overflow:hidden; }
+  .history-item img { width:100%; aspect-ratio:1/1; object-fit:cover; background:#222; }
+  .history-item .hi-body { padding: 8px; }
+  .history-item .hi-title { font-size:12.5px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .history-item .hi-meta { font-size:10.5px; color: var(--text-muted); margin: 3px 0 6px; }
+  .history-item .hi-actions { display:flex; gap:6px; }
+  .history-item .hi-actions button { flex:1; padding:5px; font-size:11px; }
+  .empty { color: var(--text-muted); font-size: 13px; padding: 8px 0; }
+  .filter-tabs { display:flex; gap:6px; margin-bottom: 12px; flex-wrap:wrap; }
+  .filter-tabs button { padding: 6px 12px; font-size: 12.5px; background:#262a3a; }
+  .filter-tabs button.active { background: var(--accent-ui); }
 </style>
 </head>
 <body>
-
-<header class="topbar">
-  <h1>🚀 AI Маркетинг-студия</h1>
-  <p class="subtitle">Генератор постов и конструктор карточек товаров на одной платформе.</p>
-  <div class="tabs">
-    <button class="tab-btn active" id="tabBtnPosts" type="button">📝 Посты</button>
-    <button class="tab-btn" id="tabBtnCards" type="button">🖼️ Карточки</button>
-  </div>
-</header>
-
 <div class="wrap">
+  <h1><i class="fa-solid fa-layer-group"></i> Конструктор карточек для маркетплейсов</h1>
+  <p class="subtitle">Wildberries · Ozon · Яндекс.Маркет — контент, фото и предпросмотр карточки в одном месте.</p>
 
-  <!-- =====================================================================
-       TAB 1: POST GENERATOR (unchanged functionality)
-  ====================================================================== -->
-  <section class="tab-panel active" id="postsTab">
-    <p class="subtitle" style="margin-top:14px;">Опишите товар — получите готовый пост. История хранится в базе на сервере, привязана к вашему ID в браузере (<code class="uid" id="uidDisplay"></code>).</p>
+  <!-- FORM -->
+  <div class="panel" id="formPanel">
+    <h2><i class="fa-solid fa-pen"></i> Данные о товаре</h2>
+    <div class="form-grid">
+      <div>
+        <label>Название товара *</label>
+        <input type="text" id="fTitle" placeholder="Например: Термокружка 500мл с керамическим покрытием">
+      </div>
+      <div>
+        <label>Категория *</label>
+        <select id="fCategory"></select>
+      </div>
+      <div>
+        <label>Бренд</label>
+        <input type="text" id="fBrand" placeholder="Необязательно">
+      </div>
+      <div>
+        <label>Цена, ₽</label>
+        <input type="number" id="fPrice" placeholder="1990">
+      </div>
+    </div>
+    <label>Описание * (200–500 символов)</label>
+    <textarea id="fDescription" maxlength="500" oninput="updateCharCounter()" placeholder="Опишите товар: материалы, назначение, для кого, чем отличается от аналогов..."></textarea>
+    <div class="char-counter" id="charCounter">0 / 500</div>
+    <label>Ключевые преимущества (через запятую)</label>
+    <input type="text" id="fAdvantages" placeholder="лёгкий, не бьётся, держит тепло 12 часов, подходит для посудомойки">
+    <label>Своё фото (необязательно, можно сгенерировать позже)</label>
+    <input type="file" id="fOwnPhoto" accept="image/*">
+    <button class="block-btn" id="generateBtn" onclick="generateCard()"><i class="fa-solid fa-wand-magic-sparkles"></i> Создать карточку</button>
+    <div class="status" id="formStatus"></div>
+  </div>
 
-    <div class="card">
-      <textarea id="promptInput" placeholder="Например: беспроводные наушники с шумоподавлением, 30 часов работы, водозащита IPX5..."></textarea>
-      <button id="generateBtn">Сгенерировать пост</button>
-      <div class="status" id="statusText"></div>
-      <div class="result-box" id="resultBox"></div>
+  <!-- EDITOR -->
+  <div class="panel" id="editorSection">
+    <div class="toolbar">
+      <div class="mp-tabs" id="mpTabs">
+        <button data-mp="WB" onclick="switchMarketplace('WB')">Wildberries</button>
+        <button data-mp="OZON" onclick="switchMarketplace('OZON')">Ozon</button>
+        <button data-mp="YM" onclick="switchMarketplace('YM')">Я.Маркет</button>
+      </div>
+      <select class="style-select" id="styleSelect" onchange="switchStyle(this.value)">
+        <option value="premium">✨ Premium</option>
+        <option value="minimal">◻ Minimal</option>
+        <option value="kids">🧸 Kids</option>
+        <option value="tech">🖥 Tech</option>
+        <option value="eco">🌿 Eco</option>
+      </select>
+      <button class="ghost" onclick="toggleRotate()"><i class="fa-solid fa-cube"></i> 3D-вращение</button>
     </div>
 
-    <div class="card">
-      <div class="section-title">
-        <span>История запросов</span>
-        <button class="refresh-btn" id="refreshBtn">Обновить</button>
+    <div class="editor-grid">
+      <div class="card-stage">
+        <div class="card-wrapper layout-wb" id="cardWrapper" data-style="premium">
+          <div class="mp-badge" id="mpBadge">Wildberries</div>
+          <div id="blocksContainer"></div>
+        </div>
       </div>
-      <div id="historyList"></div>
+
+      <div class="side-panel panel" style="margin-top:0;">
+        <h2><i class="fa-solid fa-sliders"></i> Настройки</h2>
+        <div class="row">
+          <label style="margin:0;">Фон карточки</label>
+          <input type="color" id="bgColorPicker" onchange="setCustomBg(this.value)">
+        </div>
+        <div class="row">
+          <label style="margin:0;">Размер шрифта</label>
+          <input type="range" min="12" max="20" value="15" id="fontSizeRange" oninput="setFontSize(this.value)">
+        </div>
+        <button class="ghost block-btn" onclick="openPhotoModal()"><i class="fa-solid fa-image"></i> Сгенерировать фото AI</button>
+        <div class="btn-row">
+          <button class="secondary" onclick="exportJSON()"><i class="fa-solid fa-file-code"></i> JSON</button>
+          <button class="secondary" onclick="exportPDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+        </div>
+        <button class="block-btn" onclick="saveCard()"><i class="fa-solid fa-floppy-disk"></i> Сохранить карточку</button>
+        <div class="status" id="editorStatus"></div>
+
+        <div class="meta-box" id="metaBox"></div>
+      </div>
     </div>
-  </section>
+  </div>
 
-  <!-- =====================================================================
-       TAB 2: PRODUCT CARD CONSTRUCTOR (new functionality)
-  ====================================================================== -->
-  <section class="tab-panel" id="cardsTab">
-
-    <div class="card">
-      <div class="section-title"><span>🧩 Данные товара</span></div>
-
-      <label class="field-label">Название товара</label>
-      <input type="text" id="cardTitle" placeholder="Например: Смарт-часы FitPulse X3">
-
-      <label class="field-label">Описание</label>
-      <textarea id="cardDescription" placeholder="Кратко опишите товар..."></textarea>
-
-      <label class="field-label">Ключевые преимущества (через запятую)</label>
-      <input type="text" id="cardAdvantages" placeholder="лёгкий вес, 10 дней автономности, водонепроницаемость">
-
-      <label class="field-label">Фото товара</label>
-      <div class="photo-source-row">
-        <button class="secondary" id="uploadPhotoBtn" type="button">📁 Загрузить фото</button>
-        <button class="secondary" id="aiPhotoBtn" type="button">✨ Сгенерировать фото AI</button>
-      </div>
-      <input type="file" id="uploadPhotoInput" accept="image/*" style="display:none;">
-      <img id="uploadPreview" alt="Загруженное фото">
-
-      <div class="style-picker" id="photoStylePicker">
-        <div class="style-chip" data-style="studio">📷 Студия</div>
-        <div class="style-chip" data-style="model">🧍 Модель</div>
-        <div class="style-chip" data-style="interior">🛋️ Интерьер</div>
-        <div class="style-chip" data-style="closeup">🔍 Крупный план</div>
-      </div>
-      <button class="secondary" id="runAiPhotoBtn" type="button" style="display:none;">Сгенерировать варианты</button>
-
-      <div class="variants-grid" id="variantsGrid"></div>
-
-      <button id="createCardBtn" style="margin-top:16px;">🪄 Создать карточку</button>
-      <div class="status" id="cardStatusText"></div>
+  <!-- HISTORY -->
+  <div class="panel">
+    <h2><i class="fa-solid fa-clock-rotate-left"></i> История карточек</h2>
+    <div class="filter-tabs" id="historyFilter">
+      <button data-mp="ALL" class="active" onclick="setHistoryFilter('ALL')">Все</button>
+      <button data-mp="WB" onclick="setHistoryFilter('WB')">WB</button>
+      <button data-mp="OZON" onclick="setHistoryFilter('OZON')">Ozon</button>
+      <button data-mp="YM" onclick="setHistoryFilter('YM')">Я.Маркет</button>
     </div>
+    <div class="history-list" id="historyList"></div>
+  </div>
+</div>
 
-    <!-- Visual drag & drop editor -->
-    <div class="card" id="cardEditorWrap">
-      <div class="section-title"><span>🎨 Редактор карточки</span></div>
-
-      <div class="editor-toolbar">
-        <select id="styleSelect">
-          <option value="minimal">Минимализм</option>
-          <option value="luxury">Люкс</option>
-          <option value="kids">Детский</option>
-          <option value="techno">Техно</option>
-          <option value="eco">Эко</option>
-        </select>
-        <button class="secondary" id="regeneratePhotoBtn" type="button">🔄 Другое фото</button>
-        <button id="exportPdfBtn" type="button">⬇️ Экспорт в PDF</button>
-        <button class="secondary" id="saveCardBtn" type="button">💾 Сохранить карточку</button>
-      </div>
-
-      <div id="cardCanvas" class="style-minimal"></div>
-    </div>
-
-    <div class="card">
-      <div class="section-title">
-        <span>История карточек (последние 10)</span>
-        <button class="refresh-btn" id="refreshCardsBtn">Обновить</button>
-      </div>
-      <div id="cardsHistoryList"></div>
-    </div>
-
-  </section>
-
+<!-- PHOTO MODAL -->
+<div class="modal-overlay" id="photoModal">
+  <div class="modal-box">
+    <button class="modal-close" onclick="closePhotoModal()">&times;</button>
+    <h3><i class="fa-solid fa-camera-retro"></i> Генерация фото</h3>
+    <p class="status">Выберите тип съёмки — сгенерируем варианты через AI (Replicate / Hugging Face).</p>
+    <div class="photo-type-grid" id="photoTypeGrid"></div>
+    <button class="block-btn" id="genPhotoBtn" onclick="requestPhotos()"><i class="fa-solid fa-bolt"></i> Сгенерировать варианты</button>
+    <div class="status" id="photoStatus"></div>
+    <div class="photo-results" id="photoResults"></div>
+  </div>
 </div>
 
 <script>
-/* ==========================================================================
-   Shared helpers
-========================================================================== */
-const API_BASE = ""; // если фронтенд на другом хосте, укажи здесь полный URL бэкенда
+const API_BASE = "";
+const CATEGORIES = ["Одежда","Электроника","Дом","Детские товары","Косметика","Продукты","Спорт","Авто"];
+const MP_LABELS = { WB: "Wildberries", OZON: "Ozon", YM: "Я.Маркет" };
+const PHOTO_TYPE_LABELS = { studio: "🏢 Студия", model: "🧍 На модели", interior: "🛋 В интерьере", closeup: "🔍 Крупный план" };
+const PLACEHOLDER_IMG = "data:image/svg+xml;utf8," + encodeURIComponent(
+  '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="300"><rect width="100%" height="100%" fill="#2a2e3d"/><text x="50%" y="50%" fill="#888" font-size="16" text-anchor="middle" dy=".3em">Нет фото</text></svg>'
+);
+
+let cardState = null;
+let sortableInstance = null;
+let historyFilter = "ALL";
+let selectedPhotoType = "studio";
+let ownPhotoDataUrl = null;
 
 function escapeHtml(str) {
   const div = document.createElement("div");
   div.textContent = str == null ? "" : String(str);
   return div.innerHTML;
 }
-function formatDate(iso) {
-  try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+
+function initCategorySelect() {
+  const sel = document.getElementById("fCategory");
+  sel.innerHTML = CATEGORIES.map(c => `<option value="${c}">${c}</option>`).join("");
+}
+initCategorySelect();
+
+function updateCharCounter() {
+  const v = document.getElementById("fDescription").value;
+  document.getElementById("charCounter").textContent = `${v.length} / 500`;
 }
 
-/* ==========================================================================
-   Tabs
-========================================================================== */
-const tabBtnPosts = document.getElementById("tabBtnPosts");
-const tabBtnCards = document.getElementById("tabBtnCards");
-const postsTab = document.getElementById("postsTab");
-const cardsTab = document.getElementById("cardsTab");
+document.getElementById("fOwnPhoto").addEventListener("change", (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => { ownPhotoDataUrl = reader.result; };
+  reader.readAsDataURL(file);
+});
 
-function showTab(which) {
-  const postsActive = which === "posts";
-  postsTab.classList.toggle("active", postsActive);
-  cardsTab.classList.toggle("active", !postsActive);
-  tabBtnPosts.classList.toggle("active", postsActive);
-  tabBtnCards.classList.toggle("active", !postsActive);
-  if (!postsActive) loadCardsHistory();
+function setFormStatus(msg, type) {
+  const el = document.getElementById("formStatus");
+  el.textContent = msg || "";
+  el.className = "status" + (type ? " " + type : "");
 }
-tabBtnPosts.addEventListener("click", () => showTab("posts"));
-tabBtnCards.addEventListener("click", () => showTab("cards"));
+function setEditorStatus(msg, type) {
+  const el = document.getElementById("editorStatus");
+  el.textContent = msg || "";
+  el.className = "status" + (type ? " " + type : "");
+}
 
+// -------------------- Generate card --------------------
+async function generateCard() {
+  const title = document.getElementById("fTitle").value.trim();
+  const category = document.getElementById("fCategory").value;
+  const brand = document.getElementById("fBrand").value.trim();
+  const price = document.getElementById("fPrice").value;
+  const description = document.getElementById("fDescription").value.trim();
+  const advantages = document.getElementById("fAdvantages").value.trim();
 
-/* ==========================================================================
-   TAB 1: Post generator (unchanged logic)
-========================================================================== */
-function getUserId() {
-  let id = localStorage.getItem("ai_app_user_id");
-  if (!id) {
-    id = "u_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-    localStorage.setItem("ai_app_user_id", id);
+  if (!title || !category || description.length < 10) {
+    setFormStatus("Заполните название, категорию и описание (минимум 10 символов).", "error");
+    return;
   }
-  return id;
-}
-const userId = getUserId();
-document.getElementById("uidDisplay").textContent = userId.slice(0, 10) + "...";
 
-const promptInput = document.getElementById("promptInput");
-const generateBtn = document.getElementById("generateBtn");
-const statusText = document.getElementById("statusText");
-const resultBox = document.getElementById("resultBox");
-const historyList = document.getElementById("historyList");
-const refreshBtn = document.getElementById("refreshBtn");
-
-function setStatus(msg, isError) {
-  statusText.textContent = msg || "";
-  statusText.className = "status" + (isError ? " error" : "");
-}
-
-async function generate() {
-  const prompt = promptInput.value.trim();
-  if (!prompt) { setStatus("Введите описание товара.", true); return; }
-  generateBtn.disabled = true;
-  setStatus("Генерируем... это может занять до 30 секунд.");
-  resultBox.style.display = "none";
+  const btn = document.getElementById("generateBtn");
+  btn.disabled = true;
+  setFormStatus("Генерируем текст карточки... это может занять до 30-60 секунд.");
 
   try {
-    const res = await fetch(API_BASE + "/generate", {
-      method: "POST",
+    const res = await fetch(API_BASE + "/generate_card", {
+      method: "POST", credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt, user_id: userId }),
+      body: JSON.stringify({ title, category, brand, price, description, advantages }),
     });
     const data = await res.json();
-    if (!res.ok) { setStatus(data.error || "Ошибка генерации.", true); return; }
-    resultBox.textContent = data.result;
-    resultBox.style.display = "block";
-    setStatus("Готово.");
-    promptInput.value = "";
+    if (!res.ok) { setFormStatus(data.error || "Ошибка генерации.", "error"); return; }
+
+    cardState = {
+      title: data.title, brand: data.brand, category: data.category, price: data.price,
+      content: data.content, suggested_categories: data.suggested_categories,
+      articles: data.articles, promo_estimate: data.promo_estimate,
+      marketplace: "WB", style: "premium",
+      photos: ownPhotoDataUrl ? { studio: [ownPhotoDataUrl] } : {},
+      selectedPhoto: ownPhotoDataUrl || null,
+      blockOrder: ["photo", "title", "price", "rating", "advantages", "characteristics", "button"],
+      blocksHTML: {}, customBg: null, fontSize: 15,
+    };
+
+    document.getElementById("editorSection").style.display = "block";
+    renderCard();
+    setFormStatus("Готово! Карточка сгенерирована ниже.", "ok");
+    document.getElementById("editorSection").scrollIntoView({ behavior: "smooth" });
+
+    if (!ownPhotoDataUrl) { requestPhotosAuto(); }
+  } catch (err) {
+    setFormStatus("Не удалось связаться с сервером: " + err.message, "error");
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// -------------------- Rendering --------------------
+function titleFor(mp) {
+  const c = cardState.content || {};
+  if (mp === "WB") return c.title_wb || cardState.title;
+  if (mp === "OZON") return c.title_ozon || cardState.title;
+  return c.title_ym || cardState.title;
+}
+
+function buildBlockHTML(name) {
+  const c = cardState.content || {};
+  switch (name) {
+    case "title":
+      return `<div class="block-title" contenteditable="true">${escapeHtml(titleFor(cardState.marketplace))}</div>`;
+    case "price":
+      return `<div class="block-price" contenteditable="true">${cardState.price ? Number(cardState.price).toLocaleString("ru-RU") + " ₽" : "Цена не указана"}</div>`;
+    case "rating":
+      return `<div class="block-rating" contenteditable="true">★★★★★ 4.8 · 127 отзывов</div>`;
+    case "advantages":
+      return `<ul class="block-advantages" contenteditable="true">${(c.advantages || []).map(a => `<li>${escapeHtml(a)}</li>`).join("")}</ul>`;
+    case "characteristics":
+      return `<table class="block-characteristics" contenteditable="true">${(c.characteristics || []).map(ch => `<tr><td>${escapeHtml(ch.param)}</td><td>${escapeHtml(ch.value)}</td></tr>`).join("")}</table>`;
+    case "button":
+      return `<button class="cart-btn" contenteditable="true">В корзину</button>`;
+    default:
+      return "";
+  }
+}
+
+function photoBlockInner() {
+  const src = cardState.selectedPhoto || PLACEHOLDER_IMG;
+  return `
+    <img id="cardPhotoImg" src="${src}" alt="Фото товара">
+    <div class="photo-controls">
+      <button class="ghost" onclick="openPhotoModal()"><i class="fa-solid fa-wand-magic-sparkles"></i> AI фото</button>
+      <label class="upload-btn">📁 Своё<input type="file" accept="image/*" onchange="handleOwnUpload(event)" hidden></label>
+    </div>`;
+}
+
+function renderCard() {
+  const wrap = document.getElementById("cardWrapper");
+  wrap.className = "card-wrapper layout-" + cardState.marketplace.toLowerCase();
+  wrap.dataset.style = cardState.style;
+  if (cardState.customBg) wrap.style.setProperty("--card-bg", cardState.customBg);
+  wrap.style.setProperty("--font-size-base", cardState.fontSize + "px");
+  wrap.style.fontSize = cardState.fontSize + "px";
+
+  document.getElementById("mpBadge").textContent = MP_LABELS[cardState.marketplace];
+  document.querySelectorAll("#mpTabs button").forEach(b => b.classList.toggle("active", b.dataset.mp === cardState.marketplace));
+  document.getElementById("styleSelect").value = cardState.style;
+
+  const container = document.getElementById("blocksContainer");
+  container.innerHTML = "";
+  cardState.blockOrder.forEach((name, i) => {
+    const el = document.createElement("div");
+    el.className = "mp-block block-" + name;
+    el.dataset.block = name;
+    const inner = name === "photo" ? photoBlockInner() : (cardState.blocksHTML[name] ?? buildBlockHTML(name));
+    el.innerHTML = `<div class="drag-handle"><i class="fa-solid fa-grip-vertical"></i></div><div class="block-inner">${inner}</div>`;
+    const wrapper = el.querySelector(".block-inner");
+    wrapper.classList.add("fade-in-block");
+    wrapper.style.animationDelay = (i * 0.15) + "s";
+    container.appendChild(el);
+  });
+
+  initSortable();
+  renderMeta();
+}
+
+function initSortable() {
+  if (sortableInstance) sortableInstance.destroy();
+  sortableInstance = new Sortable(document.getElementById("blocksContainer"), {
+    animation: 200,
+    handle: ".drag-handle",
+    onEnd: () => {
+      cardState.blockOrder = Array.from(document.getElementById("blocksContainer").children).map(c => c.dataset.block);
+    },
+  });
+}
+
+function syncBlocksFromDOM() {
+  document.querySelectorAll("#blocksContainer .mp-block").forEach(el => {
+    const name = el.dataset.block;
+    if (name === "photo") return;
+    const inner = el.querySelector(".block-inner > *");
+    if (inner) cardState.blocksHTML[name] = inner.outerHTML;
+  });
+}
+
+function renderMeta() {
+  if (!cardState) return;
+  const sc = cardState.suggested_categories || {};
+  const art = cardState.articles || {};
+  const promo = cardState.promo_estimate || {};
+  document.getElementById("metaBox").innerHTML = `
+    <div><b>Категории площадок:</b><br>WB: ${escapeHtml(sc.WB || "—")}<br>Ozon: ${escapeHtml(sc.OZON || "—")}<br>Я.Маркет: ${escapeHtml(sc.YM || "—")}</div>
+    <div style="margin-top:6px;"><b>Артикулы:</b> ${escapeHtml(art.WB || "—")} / ${escapeHtml(art.OZON || "—")} / ${escapeHtml(art.YM || "—")}</div>
+    <div style="margin-top:6px;"><b>Продвижение:</b> ${promo.estimated_daily_budget != null ? "~" + promo.estimated_daily_budget + " ₽/день" : "—"}<br><span style="font-size:11px;">${escapeHtml(promo.note || "")}</span></div>
+  `;
+}
+
+function switchMarketplace(mp) {
+  syncBlocksFromDOM();
+  cardState.marketplace = mp;
+  // marketplace switch changes the title block source; drop cached title override so it re-picks per-mp title
+  delete cardState.blocksHTML.title;
+  renderCard();
+}
+
+function switchStyle(style) {
+  syncBlocksFromDOM();
+  cardState.style = style;
+  renderCard();
+}
+
+function toggleRotate() {
+  const wrap = document.getElementById("cardWrapper");
+  wrap.classList.add("rotate-3d");
+  setTimeout(() => wrap.classList.remove("rotate-3d"), 1300);
+}
+
+function setCustomBg(color) {
+  cardState.customBg = color;
+  document.getElementById("cardWrapper").style.setProperty("--card-bg", color);
+}
+function setFontSize(size) {
+  cardState.fontSize = size;
+  document.getElementById("cardWrapper").style.fontSize = size + "px";
+}
+
+function handleOwnUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    cardState.selectedPhoto = reader.result;
+    cardState.photos.studio = [reader.result, ...(cardState.photos.studio || [])];
+    document.getElementById("cardPhotoImg").src = reader.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+// -------------------- Photo generation --------------------
+function applicableTypes() {
+  const types = ["studio", "closeup"];
+  if (["Одежда", "Спорт"].includes(cardState.category)) types.push("model");
+  if (cardState.category === "Дом") types.push("interior");
+  return types;
+}
+
+function openPhotoModal() {
+  if (!cardState) return;
+  const grid = document.getElementById("photoTypeGrid");
+  const types = applicableTypes();
+  grid.innerHTML = types.map(t => `<button data-t="${t}" class="${t === selectedPhotoType ? "active" : ""}" onclick="selectPhotoType('${t}')">${PHOTO_TYPE_LABELS[t]}</button>`).join("");
+  if (!types.includes(selectedPhotoType)) selectedPhotoType = types[0];
+  document.getElementById("photoResults").innerHTML = "";
+  document.getElementById("photoStatus").textContent = "";
+  document.getElementById("photoModal").classList.add("open");
+}
+function closePhotoModal() { document.getElementById("photoModal").classList.remove("open"); }
+function selectPhotoType(t) {
+  selectedPhotoType = t;
+  document.querySelectorAll("#photoTypeGrid button").forEach(b => b.classList.toggle("active", b.dataset.t === t));
+}
+
+async function requestPhotos() {
+  const statusEl = document.getElementById("photoStatus");
+  const btn = document.getElementById("genPhotoBtn");
+  btn.disabled = true;
+  statusEl.className = "status";
+  statusEl.textContent = "Генерируем фото... это может занять до минуты.";
+  try {
+    const res = await fetch(API_BASE + "/generate_photo", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: cardState.title, description: cardState.content.description_short || "",
+        keywords: (cardState.content.seo_keywords && cardState.content.seo_keywords.wb || []).join(", "),
+        category: cardState.category, types: [selectedPhotoType, selectedPhotoType === "studio" ? "studio2" : null].filter(Boolean),
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) { statusEl.textContent = data.error || "Ошибка генерации фото."; statusEl.className = "status error"; return; }
+    Object.entries(data.images || {}).forEach(([type, urls]) => {
+      cardState.photos[type] = [...(cardState.photos[type] || []), ...urls];
+    });
+    renderPhotoResults();
+    if (Object.keys(data.errors || {}).length) {
+      statusEl.textContent = "Часть вариантов не удалась: " + Object.values(data.errors).join(" | ");
+      statusEl.className = "status error";
+    } else {
+      statusEl.textContent = "Готово. Кликните по фото, чтобы выбрать его.";
+      statusEl.className = "status ok";
+    }
+  } catch (err) {
+    statusEl.textContent = "Не удалось связаться с сервером: " + err.message;
+    statusEl.className = "status error";
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function requestPhotosAuto() {
+  // silently prefetch studio variants right after card generation
+  try {
+    const res = await fetch(API_BASE + "/generate_photo", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title: cardState.title, description: cardState.content.description_short || "",
+        keywords: (cardState.content.seo_keywords && cardState.content.seo_keywords.wb || []).join(", "),
+        category: cardState.category,
+      }),
+    });
+    const data = await res.json();
+    if (res.ok) {
+      Object.entries(data.images || {}).forEach(([type, urls]) => {
+        cardState.photos[type] = [...(cardState.photos[type] || []), ...urls];
+      });
+      if (!cardState.selectedPhoto) {
+        const first = Object.values(cardState.photos)[0];
+        if (first && first[0]) {
+          cardState.selectedPhoto = first[0];
+          const img = document.getElementById("cardPhotoImg");
+          if (img) img.src = first[0];
+        }
+      }
+    }
+  } catch (e) { /* silent background prefetch */ }
+}
+
+function renderPhotoResults() {
+  const box = document.getElementById("photoResults");
+  const urls = cardState.photos[selectedPhotoType] || [];
+  box.innerHTML = urls.map(u => `<img src="${u}" onclick="pickPhoto('${u}')">`).join("");
+}
+
+function pickPhoto(url) {
+  cardState.selectedPhoto = url;
+  const img = document.getElementById("cardPhotoImg");
+  if (img) img.src = url;
+  closePhotoModal();
+}
+
+// -------------------- Save / History --------------------
+async function saveCard() {
+  syncBlocksFromDOM();
+  setEditorStatus("Сохраняем...");
+  try {
+    const res = await fetch(API_BASE + "/save_card", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cardState),
+    });
+    const data = await res.json();
+    if (!res.ok) { setEditorStatus(data.error || "Ошибка сохранения.", "error"); return; }
+    setEditorStatus("Сохранено в историю.", "ok");
     loadHistory();
   } catch (err) {
-    setStatus("Не удалось связаться с сервером: " + err.message, true);
-  } finally {
-    generateBtn.disabled = false;
+    setEditorStatus("Не удалось связаться с сервером: " + err.message, "error");
   }
 }
 
 async function loadHistory() {
-  historyList.innerHTML = '<div class="empty">Загрузка...</div>';
+  const list = document.getElementById("historyList");
+  list.innerHTML = '<div class="empty">Загрузка...</div>';
   try {
-    const res = await fetch(API_BASE + "/history?user_id=" + encodeURIComponent(userId));
+    const q = historyFilter === "ALL" ? "" : "?marketplace=" + historyFilter;
+    const res = await fetch(API_BASE + "/get_history" + q, { credentials: "include" });
     const items = await res.json();
     if (!Array.isArray(items) || items.length === 0) {
-      historyList.innerHTML = '<div class="empty">Пока нет запросов.</div>';
+      list.innerHTML = '<div class="empty">Пока нет сохранённых карточек.</div>';
       return;
     }
-    historyList.innerHTML = "";
-    for (const item of items) {
-      const div = document.createElement("div");
-      div.className = "history-item";
-      div.innerHTML = `
-        <div class="history-prompt">Запрос: ${escapeHtml(item.prompt)}</div>
-        <div class="history-result">${escapeHtml(item.result)}</div>
-        <div class="history-date">${formatDate(item.created_at)}</div>
-      `;
-      historyList.appendChild(div);
-    }
-  } catch (err) {
-    historyList.innerHTML = '<div class="empty">Не удалось загрузить историю.</div>';
-  }
-}
-
-generateBtn.addEventListener("click", generate);
-refreshBtn.addEventListener("click", loadHistory);
-loadHistory();
-
-
-/* ==========================================================================
-   TAB 2: Product card constructor
-========================================================================== */
-const cardTitle = document.getElementById("cardTitle");
-const cardDescription = document.getElementById("cardDescription");
-const cardAdvantages = document.getElementById("cardAdvantages");
-
-const uploadPhotoBtn = document.getElementById("uploadPhotoBtn");
-const uploadPhotoInput = document.getElementById("uploadPhotoInput");
-const uploadPreview = document.getElementById("uploadPreview");
-
-const aiPhotoBtn = document.getElementById("aiPhotoBtn");
-const photoStylePicker = document.getElementById("photoStylePicker");
-const runAiPhotoBtn = document.getElementById("runAiPhotoBtn");
-const variantsGrid = document.getElementById("variantsGrid");
-
-const createCardBtn = document.getElementById("createCardBtn");
-const cardStatusText = document.getElementById("cardStatusText");
-
-const cardEditorWrap = document.getElementById("cardEditorWrap");
-const cardCanvas = document.getElementById("cardCanvas");
-const styleSelect = document.getElementById("styleSelect");
-const regeneratePhotoBtn = document.getElementById("regeneratePhotoBtn");
-const exportPdfBtn = document.getElementById("exportPdfBtn");
-const saveCardBtn = document.getElementById("saveCardBtn");
-
-const cardsHistoryList = document.getElementById("cardsHistoryList");
-const refreshCardsBtn = document.getElementById("refreshCardsBtn");
-
-let selectedPhotoType = "studio";
-let selectedPhotoUrl = "";     // currently chosen photo (uploaded or AI variant)
-let currentCardData = null;    // full state of the card currently in the editor
-let sortableInstance = null;
-
-function setCardStatus(msg, isError) {
-  cardStatusText.textContent = msg || "";
-  cardStatusText.className = "status" + (isError ? " error" : "");
-}
-
-/* ---- Photo: upload own file ---- */
-uploadPhotoBtn.addEventListener("click", () => uploadPhotoInput.click());
-uploadPhotoInput.addEventListener("change", () => {
-  const file = uploadPhotoInput.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = () => {
-    selectedPhotoUrl = reader.result;
-    uploadPreview.src = selectedPhotoUrl;
-    uploadPreview.style.display = "block";
-    variantsGrid.classList.remove("visible");
-    photoStylePicker.classList.remove("visible");
-    runAiPhotoBtn.style.display = "none";
-  };
-  reader.readAsDataURL(file);
-});
-
-/* ---- Photo: AI generation — pick a shooting style, then generate 4 variants ---- */
-aiPhotoBtn.addEventListener("click", () => {
-  photoStylePicker.classList.toggle("visible");
-  runAiPhotoBtn.style.display = photoStylePicker.classList.contains("visible") ? "block" : "none";
-});
-
-photoStylePicker.querySelectorAll(".style-chip").forEach(chip => {
-  chip.addEventListener("click", () => {
-    photoStylePicker.querySelectorAll(".style-chip").forEach(c => c.classList.remove("selected"));
-    chip.classList.add("selected");
-    selectedPhotoType = chip.dataset.style;
-  });
-});
-
-async function requestPhotoVariants() {
-  const title = cardTitle.value.trim();
-  if (!title) { setCardStatus("Сначала укажите название товара.", true); return; }
-
-  runAiPhotoBtn.disabled = true;
-  setCardStatus("Генерируем варианты фото... до 60 секунд.");
-  variantsGrid.innerHTML = "";
-  variantsGrid.classList.remove("visible");
-
-  try {
-    const res = await fetch(API_BASE + "/generate_photo", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt: title + (cardDescription.value.trim() ? (", " + cardDescription.value.trim()) : "") }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setCardStatus(data.error || "Ошибка генерации фото.", true); return; }
-
-    for (const variant of data.variants) {
-      const div = document.createElement("div");
-      div.className = "variant-thumb";
-      div.innerHTML = `<img src="${variant.image}" alt="${escapeHtml(variant.label)}"><div class="variant-label">${escapeHtml(variant.label)}</div>`;
-      div.addEventListener("click", () => {
-        variantsGrid.querySelectorAll(".variant-thumb").forEach(t => t.classList.remove("selected"));
-        div.classList.add("selected");
-        selectedPhotoUrl = variant.image;
-        uploadPreview.style.display = "none";
-      });
-      variantsGrid.appendChild(div);
-    }
-    variantsGrid.classList.add("visible");
-    setCardStatus(data.errors && data.errors.length ? "Часть вариантов не сгенерировалась: " + data.errors.join("; ") : "Выберите понравившееся фото.");
-  } catch (err) {
-    setCardStatus("Не удалось связаться с сервером: " + err.message, true);
-  } finally {
-    runAiPhotoBtn.disabled = false;
-  }
-}
-runAiPhotoBtn.addEventListener("click", requestPhotoVariants);
-regeneratePhotoBtn.addEventListener("click", requestPhotoVariants);
-
-/* ---- Create card: generate text content via backend ---- */
-createCardBtn.addEventListener("click", async () => {
-  const title = cardTitle.value.trim();
-  if (!title) { setCardStatus("Укажите название товара.", true); return; }
-
-  createCardBtn.disabled = true;
-  setCardStatus("Генерируем контент карточки... это может занять до 30 секунд.");
-
-  try {
-    const res = await fetch(API_BASE + "/generate_card", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        title,
-        description: cardDescription.value.trim(),
-        advantages: cardAdvantages.value.trim(),
-        style: styleSelect.value,
-        photo_type: selectedPhotoType,
-      }),
-    });
-    const data = await res.json();
-    if (!res.ok) { setCardStatus(data.error || "Ошибка генерации карточки.", true); return; }
-
-    data.photos = selectedPhotoUrl ? [selectedPhotoUrl] : [];
-    data.activeDescriptionIndex = 0;
-    currentCardData = data;
-    renderCardEditor(currentCardData);
-    setCardStatus("Готово! Отредактируйте карточку ниже.");
-    cardEditorWrap.classList.add("visible");
-    cardEditorWrap.scrollIntoView({ behavior: "smooth", block: "start" });
-  } catch (err) {
-    setCardStatus("Не удалось связаться с сервером: " + err.message, true);
-  } finally {
-    createCardBtn.disabled = false;
-  }
-});
-
-/* ---- Render the draggable, editable card blocks ---- */
-function renderCardEditor(data) {
-  styleSelect.value = data.style || "minimal";
-  cardCanvas.className = "style-" + (data.style || "minimal");
-
-  const descIndex = data.activeDescriptionIndex || 0;
-  const descriptions = data.descriptions && data.descriptions.length ? data.descriptions : [""];
-
-  const advantagesHtml = (data.advantages || []).map(a => `<li contenteditable="true">${escapeHtml(a)}</li>`).join("");
-  const rowsHtml = (data.characteristics || []).map(c =>
-    `<tr><td contenteditable="true">${escapeHtml(c.name)}</td><td contenteditable="true">${escapeHtml(c.value)}</td></tr>`
-  ).join("");
-  const photoSrc = (data.photos && data.photos[0]) || "";
-  const descVariantBtns = descriptions.map((d, i) =>
-    `<button type="button" class="${i === descIndex ? 'active' : ''}" data-desc-index="${i}">Вариант ${i + 1}</button>`
-  ).join("");
-
-  cardCanvas.innerHTML = `
-    <div class="block block-photo" data-block="photo">
-      <div class="block-label">Фото</div>
-      ${photoSrc ? `<img src="${photoSrc}" alt="Фото товара">` : '<div class="empty">Фото не выбрано</div>'}
-    </div>
-    <div class="block block-headline-wrap" data-block="headline">
-      <div class="block-label">Заголовок</div>
-      <div class="block-headline" contenteditable="true">${escapeHtml(data.headline)}</div>
-    </div>
-    <div class="block block-description" data-block="description">
-      <div class="block-label">Описание</div>
-      <div class="desc-text" contenteditable="true">${escapeHtml(descriptions[descIndex])}</div>
-      <div class="desc-variant-row">${descVariantBtns}</div>
-    </div>
-    <div class="block block-advantages" data-block="advantages">
-      <div class="block-label">Преимущества</div>
-      <ul>${advantagesHtml}</ul>
-    </div>
-    <div class="block block-table" data-block="table">
-      <div class="block-label">Характеристики</div>
-      <table>${rowsHtml}</table>
-    </div>
-  `;
-
-  cardCanvas.querySelectorAll(".desc-variant-row button").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const idx = parseInt(btn.dataset.descIndex, 10);
-      currentCardData.activeDescriptionIndex = idx;
-      const descBlock = cardCanvas.querySelector(".block-description .desc-text");
-      descBlock.textContent = descriptions[idx];
-      cardCanvas.querySelectorAll(".desc-variant-row button").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-    });
-  });
-
-  if (sortableInstance) sortableInstance.destroy();
-  sortableInstance = Sortable.create(cardCanvas, {
-    animation: 180,
-    handle: ".block",
-    ghostClass: "sortable-ghost",
-    chosenClass: "sortable-chosen",
-  });
-}
-
-styleSelect.addEventListener("change", () => {
-  if (!currentCardData) return;
-  currentCardData.style = styleSelect.value;
-  cardCanvas.className = "style-" + styleSelect.value;
-});
-
-/* ---- Collect the current (possibly hand-edited) state of the canvas ---- */
-function collectCardDataFromCanvas() {
-  if (!currentCardData) return null;
-
-  const headline = cardCanvas.querySelector(".block-headline")?.textContent.trim() || currentCardData.headline;
-  const description = cardCanvas.querySelector(".block-description .desc-text")?.textContent.trim() || "";
-  const advantages = Array.from(cardCanvas.querySelectorAll(".block-advantages li")).map(li => li.textContent.trim());
-  const characteristics = Array.from(cardCanvas.querySelectorAll(".block-table tr")).map(tr => {
-    const cells = tr.querySelectorAll("td");
-    return { name: cells[0]?.textContent.trim() || "", value: cells[1]?.textContent.trim() || "" };
-  });
-  const blockOrder = Array.from(cardCanvas.children).map(el => el.dataset.block);
-
-  currentCardData.headline = headline;
-  currentCardData.descriptions[currentCardData.activeDescriptionIndex || 0] = description;
-  currentCardData.advantages = advantages;
-  currentCardData.characteristics = characteristics;
-  currentCardData.blockOrder = blockOrder;
-  currentCardData.style = styleSelect.value;
-
-  return currentCardData;
-}
-
-/* ---- Save card to server ---- */
-saveCardBtn.addEventListener("click", async () => {
-  const data = collectCardDataFromCanvas();
-  if (!data) return;
-
-  saveCardBtn.disabled = true;
-  setCardStatus("Сохраняем карточку...");
-  try {
-    const res = await fetch(API_BASE + "/save_card", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ title: cardTitle.value.trim() || data.headline, full_data: data }),
-      credentials: "include",
-    });
-    const result = await res.json();
-    if (!res.ok) { setCardStatus(result.error || "Ошибка сохранения.", true); return; }
-    setCardStatus("Карточка сохранена.");
-    loadCardsHistory();
-  } catch (err) {
-    setCardStatus("Не удалось связаться с сервером: " + err.message, true);
-  } finally {
-    saveCardBtn.disabled = false;
-  }
-});
-
-/* ---- Export to PDF (client-side via html2canvas + jsPDF) ---- */
-exportPdfBtn.addEventListener("click", async () => {
-  collectCardDataFromCanvas();
-  exportPdfBtn.disabled = true;
-  setCardStatus("Готовим PDF...");
-  try {
-    const canvas = await html2canvas(cardCanvas, { backgroundColor: null, scale: 2 });
-    const imgData = canvas.toDataURL("image/png");
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [canvas.width, canvas.height] });
-    pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
-    const fileName = (cardTitle.value.trim() || "card").replace(/[^a-zа-я0-9]+/gi, "_") + ".pdf";
-    pdf.save(fileName);
-    setCardStatus("PDF сохранён.");
-  } catch (err) {
-    setCardStatus("Не удалось создать PDF: " + err.message, true);
-  } finally {
-    exportPdfBtn.disabled = false;
-  }
-});
-
-/* ---- Cards history: load / restore / delete ---- */
-async function loadCardsHistory() {
-  cardsHistoryList.innerHTML = '<div class="empty">Загрузка...</div>';
-  try {
-    const res = await fetch(API_BASE + "/get_cards_history", { credentials: "include" });
-    const items = await res.json();
-    if (!Array.isArray(items) || items.length === 0) {
-      cardsHistoryList.innerHTML = '<div class="empty">Пока нет сохранённых карточек.</div>';
-      return;
-    }
-    cardsHistoryList.innerHTML = "";
-    for (const item of items) {
-      const div = document.createElement("div");
-      div.className = "cards-history-item";
-      div.innerHTML = `
-        <div class="chi-info">
-          <div class="chi-title">${escapeHtml(item.title)}</div>
-          <div class="chi-date">${formatDate(item.created_at)}</div>
+    list.innerHTML = items.map(it => `
+      <div class="history-item">
+        <img src="${it.thumbnail || PLACEHOLDER_IMG}">
+        <div class="hi-body">
+          <div class="hi-title">${escapeHtml(it.title)}</div>
+          <div class="hi-meta">${MP_LABELS[it.marketplace] || it.marketplace} · ${escapeHtml(it.category || "")}</div>
+          <div class="hi-actions">
+            <button class="secondary" onclick="loadCardFromHistory(${it.id})">Открыть</button>
+            <button class="danger-btn" onclick="deleteCardFromHistory(${it.id})">Удалить</button>
+          </div>
         </div>
-        <button class="secondary" data-action="load">Загрузить</button>
-        <button class="danger-outline" data-action="delete">Удалить</button>
-      `;
-      div.querySelector('[data-action="load"]').addEventListener("click", () => {
-        if (!item.full_data) return;
-        currentCardData = item.full_data;
-        cardTitle.value = item.title;
-        selectedPhotoUrl = (item.full_data.photos && item.full_data.photos[0]) || "";
-        renderCardEditor(currentCardData);
-        cardEditorWrap.classList.add("visible");
-        cardEditorWrap.scrollIntoView({ behavior: "smooth", block: "start" });
-      });
-      div.querySelector('[data-action="delete"]').addEventListener("click", async () => {
-        try {
-          await fetch(API_BASE + "/delete_card", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: item.id }),
-            credentials: "include",
-          });
-          loadCardsHistory();
-        } catch (err) {
-          setCardStatus("Не удалось удалить карточку: " + err.message, true);
-        }
-      });
-      cardsHistoryList.appendChild(div);
-    }
+      </div>
+    `).join("");
   } catch (err) {
-    cardsHistoryList.innerHTML = '<div class="empty">Не удалось загрузить историю карточек.</div>';
+    list.innerHTML = '<div class="empty">Не удалось загрузить историю.</div>';
   }
 }
-refreshCardsBtn.addEventListener("click", loadCardsHistory);
+
+function setHistoryFilter(mp) {
+  historyFilter = mp;
+  document.querySelectorAll("#historyFilter button").forEach(b => b.classList.toggle("active", b.dataset.mp === mp));
+  loadHistory();
+}
+
+async function loadCardFromHistory(id) {
+  try {
+    const res = await fetch(API_BASE + "/get_card/" + id, { credentials: "include" });
+    const data = await res.json();
+    if (!res.ok) { alert(data.error || "Не удалось загрузить карточку."); return; }
+    cardState = data;
+    cardState.blocksHTML = cardState.blocksHTML || {};
+    cardState.blockOrder = cardState.blockOrder || ["photo", "title", "price", "rating", "advantages", "characteristics", "button"];
+    document.getElementById("editorSection").style.display = "block";
+    renderCard();
+    document.getElementById("editorSection").scrollIntoView({ behavior: "smooth" });
+  } catch (err) {
+    alert("Ошибка: " + err.message);
+  }
+}
+
+async function deleteCardFromHistory(id) {
+  if (!confirm("Удалить эту карточку из истории?")) return;
+  try {
+    await fetch(API_BASE + "/delete_card", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    loadHistory();
+  } catch (err) { alert("Ошибка: " + err.message); }
+}
+
+// -------------------- Export --------------------
+function exportJSON() {
+  syncBlocksFromDOM();
+  const c = cardState.content || {};
+  const schema = {
+    marketplace: cardState.marketplace,
+    name: titleFor(cardState.marketplace),
+    description: c.description_medium || c.description_short || "",
+    characteristics: c.characteristics || [],
+    price: cardState.price,
+    photos: Object.values(cardState.photos || {}).flat(),
+    article: (cardState.articles || {})[cardState.marketplace],
+    category: (cardState.suggested_categories || {})[cardState.marketplace] || cardState.category,
+  };
+  const blob = new Blob([JSON.stringify(schema, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `card_${cardState.marketplace.toLowerCase()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function exportPDF() {
+  syncBlocksFromDOM();
+  setEditorStatus("Готовим PDF-презентацию...");
+  try {
+    const res = await fetch(API_BASE + "/export_pdf", {
+      method: "POST", credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(cardState),
+    });
+    const htmlText = await res.text();
+    const blob = new Blob([htmlText], { type: "text/html" });
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setEditorStatus("Открыто в новой вкладке — используйте печать браузера, чтобы сохранить как PDF.", "ok");
+  } catch (err) {
+    setEditorStatus("Не удалось подготовить PDF: " + err.message, "error");
+  }
+}
+
+// -------------------- Init --------------------
+loadHistory();
 </script>
 </body>
 </html>
