@@ -3,16 +3,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>AI Генератор маркетинговых постов</title>
+<title>AI Генератор постов и карточек товаров</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.2/Sortable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <style>
   :root {
     --bg: #0f1117;
     --card: #1a1d29;
+    --card2: #12141d;
     --accent: #6c5ce7;
     --accent2: #00d2a0;
     --text: #eef0f6;
     --muted: #9096ab;
     --danger: #ff6b6b;
+    --border: #2a2e3d;
   }
   * { box-sizing: border-box; }
   body {
@@ -21,12 +26,50 @@
     background: linear-gradient(160deg, #0f1117, #171a24);
     color: var(--text);
     min-height: 100vh;
-    padding: 24px 16px 60px;
+    padding: 0 16px 60px;
   }
-  .wrap { max-width: 720px; margin: 0 auto; }
-  h1 { font-size: 22px; margin-bottom: 4px; }
-  p.subtitle { color: var(--muted); margin-top: 0; font-size: 14px; }
+  .wrap { max-width: 860px; margin: 0 auto; }
 
+  /* ---------- Header / tabs ---------- */
+  header.topbar {
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 20px 0 8px;
+  }
+  h1 { font-size: 21px; margin: 0 0 4px; }
+  p.subtitle { color: var(--muted); margin: 0 0 16px; font-size: 13.5px; }
+
+  .tabs {
+    display: flex;
+    gap: 8px;
+    background: var(--card2);
+    border-radius: 12px;
+    padding: 5px;
+    border: 1px solid var(--border);
+  }
+  .tab-btn {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    padding: 10px 14px;
+    border-radius: 9px;
+    font-size: 14.5px;
+    font-weight: 600;
+    cursor: pointer;
+    margin: 0;
+    width: auto;
+    transition: background .15s, color .15s;
+  }
+  .tab-btn.active {
+    background: linear-gradient(120deg, var(--accent), #a29bfe);
+    color: #fff;
+  }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  /* ---------- Shared card style ---------- */
   .card {
     background: var(--card);
     border-radius: 14px;
@@ -34,19 +77,20 @@
     margin-top: 18px;
     box-shadow: 0 4px 16px rgba(0,0,0,0.25);
   }
-
-  textarea {
+  textarea, input[type=text], select {
     width: 100%;
-    min-height: 100px;
-    background: #12141d;
-    border: 1px solid #2a2e3d;
+    background: var(--card2);
+    border: 1px solid var(--border);
     border-radius: 10px;
     color: var(--text);
     padding: 12px;
     font-size: 15px;
-    resize: vertical;
+    font-family: inherit;
   }
-  textarea:focus { outline: none; border-color: var(--accent); }
+  textarea { min-height: 100px; resize: vertical; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--accent); }
+  label.field-label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 6px; }
+  label.field-label:first-child { margin-top: 0; }
 
   button {
     margin-top: 12px;
@@ -61,13 +105,25 @@
     width: 100%;
   }
   button:disabled { opacity: 0.6; cursor: not-allowed; }
+  button.secondary {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    color: var(--text);
+  }
+  button.danger-outline {
+    background: transparent;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+  }
+  .btn-row { display: flex; gap: 10px; margin-top: 12px; }
+  .btn-row button { margin-top: 0; }
 
   .status { margin-top: 10px; font-size: 13px; color: var(--muted); min-height: 18px; }
   .status.error { color: var(--danger); }
 
   .result-box {
     margin-top: 14px;
-    background: #12141d;
+    background: var(--card2);
     border-left: 3px solid var(--accent2);
     padding: 14px;
     border-radius: 8px;
@@ -77,165 +133,715 @@
     display: none;
   }
 
-  .history-item {
-    border-bottom: 1px solid #262a38;
-    padding: 12px 0;
-  }
+  .history-item { border-bottom: 1px solid #262a38; padding: 12px 0; }
   .history-item:last-child { border-bottom: none; }
   .history-prompt { font-size: 13px; color: var(--muted); margin-bottom: 4px; }
   .history-result { font-size: 14px; white-space: pre-wrap; }
   .history-date { font-size: 11px; color: #545a70; margin-top: 6px; }
 
   .section-title {
-    font-size: 15px;
-    font-weight: 600;
-    margin-bottom: 8px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+    font-size: 15px; font-weight: 600; margin-bottom: 8px;
+    display: flex; justify-content: space-between; align-items: center;
   }
   .refresh-btn {
-    background: none;
-    width: auto;
-    padding: 4px 10px;
-    font-size: 12px;
-    color: var(--accent2);
-    margin: 0;
+    background: none; width: auto; padding: 4px 10px;
+    font-size: 12px; color: var(--accent2); margin: 0;
   }
   .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
-
   code.uid { color: var(--accent2); font-size: 11px; }
+
+  /* ---------- Card constructor: photo style picker ---------- */
+  .photo-source-row { display: flex; gap: 10px; margin-top: 12px; }
+  .photo-source-row button { margin-top: 0; }
+  #uploadPreview {
+    margin-top: 10px; max-width: 160px; border-radius: 10px; display: none;
+  }
+  .style-picker {
+    display: none;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .style-picker.visible { display: grid; }
+  .style-chip {
+    background: var(--card2);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 10px;
+    text-align: center;
+    font-size: 13px;
+    cursor: pointer;
+  }
+  .style-chip.selected { border-color: var(--accent); background: #201a3a; }
+
+  .variants-grid {
+    display: none;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    margin-top: 12px;
+  }
+  .variants-grid.visible { display: grid; }
+  .variant-thumb {
+    position: relative;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 2px solid var(--border);
+    cursor: pointer;
+  }
+  .variant-thumb.selected { border-color: var(--accent2); }
+  .variant-thumb img { width: 100%; height: 110px; object-fit: cover; display: block; }
+  .variant-thumb .variant-label {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    background: rgba(0,0,0,0.55); font-size: 11px; padding: 3px 6px;
+  }
+
+  /* ---------- Card editor ---------- */
+  #cardEditorWrap { display: none; margin-top: 18px; }
+  #cardEditorWrap.visible { display: block; }
+
+  .editor-toolbar {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    margin-bottom: 14px;
+  }
+  .editor-toolbar select { width: auto; flex: 1; min-width: 160px; }
+  .editor-toolbar button { width: auto; margin-top: 0; padding: 10px 16px; white-space: nowrap; }
+
+  #cardCanvas {
+    border-radius: 16px;
+    padding: 22px;
+    transition: background .2s, color .2s, font-family .2s;
+  }
+  .block {
+    background: rgba(255,255,255,0.03);
+    border: 1px dashed rgba(255,255,255,0.15);
+    border-radius: 12px;
+    padding: 14px;
+    margin-bottom: 12px;
+    cursor: grab;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+    transition: box-shadow .15s, transform .15s;
+  }
+  .block:active { cursor: grabbing; }
+  .block.sortable-ghost { opacity: 0.4; }
+  .block.sortable-chosen { box-shadow: 0 6px 18px rgba(0,0,0,0.35); transform: scale(1.01); }
+  .block-label {
+    font-size: 10.5px; text-transform: uppercase; letter-spacing: .04em;
+    opacity: .55; margin-bottom: 6px;
+  }
+  .block [contenteditable] { outline: none; }
+  .block [contenteditable]:focus { outline: 1px dashed var(--accent2); border-radius: 4px; }
+
+  .block-headline { font-size: 22px; font-weight: 700; }
+  .block-description { font-size: 14.5px; line-height: 1.6; }
+  .block-advantages ul { margin: 0; padding-left: 20px; }
+  .block-advantages li { margin-bottom: 4px; }
+  .block-photo img { width: 100%; max-height: 260px; object-fit: cover; border-radius: 10px; }
+  .block-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .block-table td { padding: 6px 8px; border-bottom: 1px solid rgba(255,255,255,0.1); }
+  .block-table td:first-child { opacity: .65; width: 45%; }
+
+  .desc-variant-row { display: flex; gap: 6px; margin-top: 8px; }
+  .desc-variant-row button {
+    width: auto; margin: 0; padding: 4px 10px; font-size: 11px;
+    background: var(--card2); border: 1px solid var(--border); color: var(--muted);
+  }
+  .desc-variant-row button.active { border-color: var(--accent2); color: var(--accent2); }
+
+  /* Style presets applied to #cardCanvas via class */
+  #cardCanvas.style-minimal { background: #ffffff; color: #1a1a1a; font-family: 'Helvetica Neue', Arial, sans-serif; }
+  #cardCanvas.style-minimal .block { background: #fafafa; border: 1px solid #eee; }
+  #cardCanvas.style-minimal .block-table td { border-bottom-color: #eee; }
+
+  #cardCanvas.style-luxury { background: #14110f; color: #ecdfc8; font-family: Georgia, 'Times New Roman', serif; }
+  #cardCanvas.style-luxury .block { background: #1c1712; border: 1px solid #4a3d26; }
+  #cardCanvas.style-luxury .block-headline { color: #d4af7a; letter-spacing: .03em; }
+  #cardCanvas.style-luxury .block-table td { border-bottom-color: #4a3d26; }
+
+  #cardCanvas.style-kids { background: #fff6e0; color: #3a2e5c; font-family: 'Comic Sans MS', 'Trebuchet MS', sans-serif; }
+  #cardCanvas.style-kids .block { background: #ffffff; border: 3px dashed #ff9ecb; border-radius: 18px; }
+  #cardCanvas.style-kids .block-headline { color: #ff6fa5; }
+
+  #cardCanvas.style-techno { background: #0a0e14; color: #baf7ff; font-family: 'Consolas', 'Courier New', monospace; }
+  #cardCanvas.style-techno .block { background: #0f1620; border: 1px solid #16f0ff44; }
+  #cardCanvas.style-techno .block-headline { color: #16f0ff; text-transform: uppercase; }
+  #cardCanvas.style-techno .block-table td { border-bottom-color: #16f0ff33; }
+
+  #cardCanvas.style-eco { background: #f2f7ec; color: #2c3d24; font-family: 'Trebuchet MS', sans-serif; }
+  #cardCanvas.style-eco .block { background: #e7f0dd; border: 1px solid #c3d9ad; border-radius: 20px; }
+  #cardCanvas.style-eco .block-headline { color: #4f7a2e; }
+
+  .cards-history-item {
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid #262a38; padding: 10px 0;
+  }
+  .cards-history-item:last-child { border-bottom: none; }
+  .cards-history-item .chi-info { flex: 1; min-width: 0; }
+  .cards-history-item .chi-title { font-size: 14px; font-weight: 600; }
+  .cards-history-item .chi-date { font-size: 11px; color: #545a70; }
+  .cards-history-item button {
+    width: auto; margin: 0; padding: 6px 12px; font-size: 12px;
+  }
 </style>
 </head>
 <body>
+
+<header class="topbar">
+  <h1>🚀 AI Маркетинг-студия</h1>
+  <p class="subtitle">Генератор постов и конструктор карточек товаров на одной платформе.</p>
+  <div class="tabs">
+    <button class="tab-btn active" id="tabBtnPosts" type="button">📝 Посты</button>
+    <button class="tab-btn" id="tabBtnCards" type="button">🖼️ Карточки</button>
+  </div>
+</header>
+
 <div class="wrap">
-  <h1>AI Генератор маркетинговых постов</h1>
-  <p class="subtitle">Опишите товар — получите готовый пост. История хранится в базе на сервере, привязана к вашему ID в браузере (<code class="uid" id="uidDisplay"></code>).</p>
 
-  <div class="card">
-    <textarea id="promptInput" placeholder="Например: беспроводные наушники с шумоподавлением, 30 часов работы, водозащита IPX5..."></textarea>
-    <button id="generateBtn">Сгенерировать пост</button>
-    <div class="status" id="statusText"></div>
-    <div class="result-box" id="resultBox"></div>
-  </div>
+  <!-- =====================================================================
+       TAB 1: POST GENERATOR (unchanged functionality)
+  ====================================================================== -->
+  <section class="tab-panel active" id="postsTab">
+    <p class="subtitle" style="margin-top:14px;">Опишите товар — получите готовый пост. История хранится в базе на сервере, привязана к вашему ID в браузере (<code class="uid" id="uidDisplay"></code>).</p>
 
-  <div class="card">
-    <div class="section-title">
-      <span>История запросов</span>
-      <button class="refresh-btn" id="refreshBtn">Обновить</button>
+    <div class="card">
+      <textarea id="promptInput" placeholder="Например: беспроводные наушники с шумоподавлением, 30 часов работы, водозащита IPX5..."></textarea>
+      <button id="generateBtn">Сгенерировать пост</button>
+      <div class="status" id="statusText"></div>
+      <div class="result-box" id="resultBox"></div>
     </div>
-    <div id="historyList"></div>
-  </div>
+
+    <div class="card">
+      <div class="section-title">
+        <span>История запросов</span>
+        <button class="refresh-btn" id="refreshBtn">Обновить</button>
+      </div>
+      <div id="historyList"></div>
+    </div>
+  </section>
+
+  <!-- =====================================================================
+       TAB 2: PRODUCT CARD CONSTRUCTOR (new functionality)
+  ====================================================================== -->
+  <section class="tab-panel" id="cardsTab">
+
+    <div class="card">
+      <div class="section-title"><span>🧩 Данные товара</span></div>
+
+      <label class="field-label">Название товара</label>
+      <input type="text" id="cardTitle" placeholder="Например: Смарт-часы FitPulse X3">
+
+      <label class="field-label">Описание</label>
+      <textarea id="cardDescription" placeholder="Кратко опишите товар..."></textarea>
+
+      <label class="field-label">Ключевые преимущества (через запятую)</label>
+      <input type="text" id="cardAdvantages" placeholder="лёгкий вес, 10 дней автономности, водонепроницаемость">
+
+      <label class="field-label">Фото товара</label>
+      <div class="photo-source-row">
+        <button class="secondary" id="uploadPhotoBtn" type="button">📁 Загрузить фото</button>
+        <button class="secondary" id="aiPhotoBtn" type="button">✨ Сгенерировать фото AI</button>
+      </div>
+      <input type="file" id="uploadPhotoInput" accept="image/*" style="display:none;">
+      <img id="uploadPreview" alt="Загруженное фото">
+
+      <div class="style-picker" id="photoStylePicker">
+        <div class="style-chip" data-style="studio">📷 Студия</div>
+        <div class="style-chip" data-style="model">🧍 Модель</div>
+        <div class="style-chip" data-style="interior">🛋️ Интерьер</div>
+        <div class="style-chip" data-style="closeup">🔍 Крупный план</div>
+      </div>
+      <button class="secondary" id="runAiPhotoBtn" type="button" style="display:none;">Сгенерировать варианты</button>
+
+      <div class="variants-grid" id="variantsGrid"></div>
+
+      <button id="createCardBtn" style="margin-top:16px;">🪄 Создать карточку</button>
+      <div class="status" id="cardStatusText"></div>
+    </div>
+
+    <!-- Visual drag & drop editor -->
+    <div class="card" id="cardEditorWrap">
+      <div class="section-title"><span>🎨 Редактор карточки</span></div>
+
+      <div class="editor-toolbar">
+        <select id="styleSelect">
+          <option value="minimal">Минимализм</option>
+          <option value="luxury">Люкс</option>
+          <option value="kids">Детский</option>
+          <option value="techno">Техно</option>
+          <option value="eco">Эко</option>
+        </select>
+        <button class="secondary" id="regeneratePhotoBtn" type="button">🔄 Другое фото</button>
+        <button id="exportPdfBtn" type="button">⬇️ Экспорт в PDF</button>
+        <button class="secondary" id="saveCardBtn" type="button">💾 Сохранить карточку</button>
+      </div>
+
+      <div id="cardCanvas" class="style-minimal"></div>
+    </div>
+
+    <div class="card">
+      <div class="section-title">
+        <span>История карточек (последние 10)</span>
+        <button class="refresh-btn" id="refreshCardsBtn">Обновить</button>
+      </div>
+      <div id="cardsHistoryList"></div>
+    </div>
+
+  </section>
+
 </div>
 
 <script>
-  const API_BASE = ""; // если фронтенд на другом хосте, укажи здесь полный URL бэкенда, напр. "https://your-app.onrender.com"
+/* ==========================================================================
+   Shared helpers
+========================================================================== */
+const API_BASE = ""; // если фронтенд на другом хосте, укажи здесь полный URL бэкенда
 
-  function getUserId() {
-    let id = localStorage.getItem("ai_app_user_id");
-    if (!id) {
-      id = "u_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
-      localStorage.setItem("ai_app_user_id", id);
-    }
-    return id;
+function escapeHtml(str) {
+  const div = document.createElement("div");
+  div.textContent = str == null ? "" : String(str);
+  return div.innerHTML;
+}
+function formatDate(iso) {
+  try { return new Date(iso).toLocaleString(); } catch (e) { return iso; }
+}
+
+/* ==========================================================================
+   Tabs
+========================================================================== */
+const tabBtnPosts = document.getElementById("tabBtnPosts");
+const tabBtnCards = document.getElementById("tabBtnCards");
+const postsTab = document.getElementById("postsTab");
+const cardsTab = document.getElementById("cardsTab");
+
+function showTab(which) {
+  const postsActive = which === "posts";
+  postsTab.classList.toggle("active", postsActive);
+  cardsTab.classList.toggle("active", !postsActive);
+  tabBtnPosts.classList.toggle("active", postsActive);
+  tabBtnCards.classList.toggle("active", !postsActive);
+  if (!postsActive) loadCardsHistory();
+}
+tabBtnPosts.addEventListener("click", () => showTab("posts"));
+tabBtnCards.addEventListener("click", () => showTab("cards"));
+
+
+/* ==========================================================================
+   TAB 1: Post generator (unchanged logic)
+========================================================================== */
+function getUserId() {
+  let id = localStorage.getItem("ai_app_user_id");
+  if (!id) {
+    id = "u_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+    localStorage.setItem("ai_app_user_id", id);
   }
+  return id;
+}
+const userId = getUserId();
+document.getElementById("uidDisplay").textContent = userId.slice(0, 10) + "...";
 
-  const userId = getUserId();
-  document.getElementById("uidDisplay").textContent = userId.slice(0, 10) + "...";
+const promptInput = document.getElementById("promptInput");
+const generateBtn = document.getElementById("generateBtn");
+const statusText = document.getElementById("statusText");
+const resultBox = document.getElementById("resultBox");
+const historyList = document.getElementById("historyList");
+const refreshBtn = document.getElementById("refreshBtn");
 
-  const promptInput = document.getElementById("promptInput");
-  const generateBtn = document.getElementById("generateBtn");
-  const statusText = document.getElementById("statusText");
-  const resultBox = document.getElementById("resultBox");
-  const historyList = document.getElementById("historyList");
-  const refreshBtn = document.getElementById("refreshBtn");
+function setStatus(msg, isError) {
+  statusText.textContent = msg || "";
+  statusText.className = "status" + (isError ? " error" : "");
+}
 
-  function setStatus(msg, isError) {
-    statusText.textContent = msg || "";
-    statusText.className = "status" + (isError ? " error" : "");
+async function generate() {
+  const prompt = promptInput.value.trim();
+  if (!prompt) { setStatus("Введите описание товара.", true); return; }
+  generateBtn.disabled = true;
+  setStatus("Генерируем... это может занять до 30 секунд.");
+  resultBox.style.display = "none";
+
+  try {
+    const res = await fetch(API_BASE + "/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt, user_id: userId }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setStatus(data.error || "Ошибка генерации.", true); return; }
+    resultBox.textContent = data.result;
+    resultBox.style.display = "block";
+    setStatus("Готово.");
+    promptInput.value = "";
+    loadHistory();
+  } catch (err) {
+    setStatus("Не удалось связаться с сервером: " + err.message, true);
+  } finally {
+    generateBtn.disabled = false;
   }
+}
 
-  function formatDate(iso) {
-    try {
-      const d = new Date(iso);
-      return d.toLocaleString();
-    } catch (e) {
-      return iso;
-    }
-  }
-
-  async function generate() {
-    const prompt = promptInput.value.trim();
-    if (!prompt) {
-      setStatus("Введите описание товара.", true);
+async function loadHistory() {
+  historyList.innerHTML = '<div class="empty">Загрузка...</div>';
+  try {
+    const res = await fetch(API_BASE + "/history?user_id=" + encodeURIComponent(userId));
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) {
+      historyList.innerHTML = '<div class="empty">Пока нет запросов.</div>';
       return;
     }
-    generateBtn.disabled = true;
-    setStatus("Генерируем... это может занять до 30 секунд.");
-    resultBox.style.display = "none";
+    historyList.innerHTML = "";
+    for (const item of items) {
+      const div = document.createElement("div");
+      div.className = "history-item";
+      div.innerHTML = `
+        <div class="history-prompt">Запрос: ${escapeHtml(item.prompt)}</div>
+        <div class="history-result">${escapeHtml(item.result)}</div>
+        <div class="history-date">${formatDate(item.created_at)}</div>
+      `;
+      historyList.appendChild(div);
+    }
+  } catch (err) {
+    historyList.innerHTML = '<div class="empty">Не удалось загрузить историю.</div>';
+  }
+}
 
-    try {
-      const res = await fetch(API_BASE + "/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, user_id: userId }),
+generateBtn.addEventListener("click", generate);
+refreshBtn.addEventListener("click", loadHistory);
+loadHistory();
+
+
+/* ==========================================================================
+   TAB 2: Product card constructor
+========================================================================== */
+const cardTitle = document.getElementById("cardTitle");
+const cardDescription = document.getElementById("cardDescription");
+const cardAdvantages = document.getElementById("cardAdvantages");
+
+const uploadPhotoBtn = document.getElementById("uploadPhotoBtn");
+const uploadPhotoInput = document.getElementById("uploadPhotoInput");
+const uploadPreview = document.getElementById("uploadPreview");
+
+const aiPhotoBtn = document.getElementById("aiPhotoBtn");
+const photoStylePicker = document.getElementById("photoStylePicker");
+const runAiPhotoBtn = document.getElementById("runAiPhotoBtn");
+const variantsGrid = document.getElementById("variantsGrid");
+
+const createCardBtn = document.getElementById("createCardBtn");
+const cardStatusText = document.getElementById("cardStatusText");
+
+const cardEditorWrap = document.getElementById("cardEditorWrap");
+const cardCanvas = document.getElementById("cardCanvas");
+const styleSelect = document.getElementById("styleSelect");
+const regeneratePhotoBtn = document.getElementById("regeneratePhotoBtn");
+const exportPdfBtn = document.getElementById("exportPdfBtn");
+const saveCardBtn = document.getElementById("saveCardBtn");
+
+const cardsHistoryList = document.getElementById("cardsHistoryList");
+const refreshCardsBtn = document.getElementById("refreshCardsBtn");
+
+let selectedPhotoType = "studio";
+let selectedPhotoUrl = "";     // currently chosen photo (uploaded or AI variant)
+let currentCardData = null;    // full state of the card currently in the editor
+let sortableInstance = null;
+
+function setCardStatus(msg, isError) {
+  cardStatusText.textContent = msg || "";
+  cardStatusText.className = "status" + (isError ? " error" : "");
+}
+
+/* ---- Photo: upload own file ---- */
+uploadPhotoBtn.addEventListener("click", () => uploadPhotoInput.click());
+uploadPhotoInput.addEventListener("change", () => {
+  const file = uploadPhotoInput.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    selectedPhotoUrl = reader.result;
+    uploadPreview.src = selectedPhotoUrl;
+    uploadPreview.style.display = "block";
+    variantsGrid.classList.remove("visible");
+    photoStylePicker.classList.remove("visible");
+    runAiPhotoBtn.style.display = "none";
+  };
+  reader.readAsDataURL(file);
+});
+
+/* ---- Photo: AI generation — pick a shooting style, then generate 4 variants ---- */
+aiPhotoBtn.addEventListener("click", () => {
+  photoStylePicker.classList.toggle("visible");
+  runAiPhotoBtn.style.display = photoStylePicker.classList.contains("visible") ? "block" : "none";
+});
+
+photoStylePicker.querySelectorAll(".style-chip").forEach(chip => {
+  chip.addEventListener("click", () => {
+    photoStylePicker.querySelectorAll(".style-chip").forEach(c => c.classList.remove("selected"));
+    chip.classList.add("selected");
+    selectedPhotoType = chip.dataset.style;
+  });
+});
+
+async function requestPhotoVariants() {
+  const title = cardTitle.value.trim();
+  if (!title) { setCardStatus("Сначала укажите название товара.", true); return; }
+
+  runAiPhotoBtn.disabled = true;
+  setCardStatus("Генерируем варианты фото... до 60 секунд.");
+  variantsGrid.innerHTML = "";
+  variantsGrid.classList.remove("visible");
+
+  try {
+    const res = await fetch(API_BASE + "/generate_photo", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt: title + (cardDescription.value.trim() ? (", " + cardDescription.value.trim()) : "") }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setCardStatus(data.error || "Ошибка генерации фото.", true); return; }
+
+    for (const variant of data.variants) {
+      const div = document.createElement("div");
+      div.className = "variant-thumb";
+      div.innerHTML = `<img src="${variant.image}" alt="${escapeHtml(variant.label)}"><div class="variant-label">${escapeHtml(variant.label)}</div>`;
+      div.addEventListener("click", () => {
+        variantsGrid.querySelectorAll(".variant-thumb").forEach(t => t.classList.remove("selected"));
+        div.classList.add("selected");
+        selectedPhotoUrl = variant.image;
+        uploadPreview.style.display = "none";
       });
-      const data = await res.json();
-
-      if (!res.ok) {
-        setStatus(data.error || "Ошибка генерации.", true);
-        return;
-      }
-
-      resultBox.textContent = data.result;
-      resultBox.style.display = "block";
-      setStatus("Готово.");
-      promptInput.value = "";
-      loadHistory();
-    } catch (err) {
-      setStatus("Не удалось связаться с сервером: " + err.message, true);
-    } finally {
-      generateBtn.disabled = false;
+      variantsGrid.appendChild(div);
     }
+    variantsGrid.classList.add("visible");
+    setCardStatus(data.errors && data.errors.length ? "Часть вариантов не сгенерировалась: " + data.errors.join("; ") : "Выберите понравившееся фото.");
+  } catch (err) {
+    setCardStatus("Не удалось связаться с сервером: " + err.message, true);
+  } finally {
+    runAiPhotoBtn.disabled = false;
   }
+}
+runAiPhotoBtn.addEventListener("click", requestPhotoVariants);
+regeneratePhotoBtn.addEventListener("click", requestPhotoVariants);
 
-  async function loadHistory() {
-    historyList.innerHTML = '<div class="empty">Загрузка...</div>';
-    try {
-      const res = await fetch(API_BASE + "/history?user_id=" + encodeURIComponent(userId));
-      const items = await res.json();
+/* ---- Create card: generate text content via backend ---- */
+createCardBtn.addEventListener("click", async () => {
+  const title = cardTitle.value.trim();
+  if (!title) { setCardStatus("Укажите название товара.", true); return; }
 
-      if (!Array.isArray(items) || items.length === 0) {
-        historyList.innerHTML = '<div class="empty">Пока нет запросов.</div>';
-        return;
-      }
+  createCardBtn.disabled = true;
+  setCardStatus("Генерируем контент карточки... это может занять до 30 секунд.");
 
-      historyList.innerHTML = "";
-      for (const item of items) {
-        const div = document.createElement("div");
-        div.className = "history-item";
-        div.innerHTML = `
-          <div class="history-prompt">Запрос: ${escapeHtml(item.prompt)}</div>
-          <div class="history-result">${escapeHtml(item.result)}</div>
-          <div class="history-date">${formatDate(item.created_at)}</div>
-        `;
-        historyList.appendChild(div);
-      }
-    } catch (err) {
-      historyList.innerHTML = '<div class="empty">Не удалось загрузить историю.</div>';
+  try {
+    const res = await fetch(API_BASE + "/generate_card", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        title,
+        description: cardDescription.value.trim(),
+        advantages: cardAdvantages.value.trim(),
+        style: styleSelect.value,
+        photo_type: selectedPhotoType,
+      }),
+    });
+    const data = await res.json();
+    if (!res.ok) { setCardStatus(data.error || "Ошибка генерации карточки.", true); return; }
+
+    data.photos = selectedPhotoUrl ? [selectedPhotoUrl] : [];
+    data.activeDescriptionIndex = 0;
+    currentCardData = data;
+    renderCardEditor(currentCardData);
+    setCardStatus("Готово! Отредактируйте карточку ниже.");
+    cardEditorWrap.classList.add("visible");
+    cardEditorWrap.scrollIntoView({ behavior: "smooth", block: "start" });
+  } catch (err) {
+    setCardStatus("Не удалось связаться с сервером: " + err.message, true);
+  } finally {
+    createCardBtn.disabled = false;
+  }
+});
+
+/* ---- Render the draggable, editable card blocks ---- */
+function renderCardEditor(data) {
+  styleSelect.value = data.style || "minimal";
+  cardCanvas.className = "style-" + (data.style || "minimal");
+
+  const descIndex = data.activeDescriptionIndex || 0;
+  const descriptions = data.descriptions && data.descriptions.length ? data.descriptions : [""];
+
+  const advantagesHtml = (data.advantages || []).map(a => `<li contenteditable="true">${escapeHtml(a)}</li>`).join("");
+  const rowsHtml = (data.characteristics || []).map(c =>
+    `<tr><td contenteditable="true">${escapeHtml(c.name)}</td><td contenteditable="true">${escapeHtml(c.value)}</td></tr>`
+  ).join("");
+  const photoSrc = (data.photos && data.photos[0]) || "";
+  const descVariantBtns = descriptions.map((d, i) =>
+    `<button type="button" class="${i === descIndex ? 'active' : ''}" data-desc-index="${i}">Вариант ${i + 1}</button>`
+  ).join("");
+
+  cardCanvas.innerHTML = `
+    <div class="block block-photo" data-block="photo">
+      <div class="block-label">Фото</div>
+      ${photoSrc ? `<img src="${photoSrc}" alt="Фото товара">` : '<div class="empty">Фото не выбрано</div>'}
+    </div>
+    <div class="block block-headline-wrap" data-block="headline">
+      <div class="block-label">Заголовок</div>
+      <div class="block-headline" contenteditable="true">${escapeHtml(data.headline)}</div>
+    </div>
+    <div class="block block-description" data-block="description">
+      <div class="block-label">Описание</div>
+      <div class="desc-text" contenteditable="true">${escapeHtml(descriptions[descIndex])}</div>
+      <div class="desc-variant-row">${descVariantBtns}</div>
+    </div>
+    <div class="block block-advantages" data-block="advantages">
+      <div class="block-label">Преимущества</div>
+      <ul>${advantagesHtml}</ul>
+    </div>
+    <div class="block block-table" data-block="table">
+      <div class="block-label">Характеристики</div>
+      <table>${rowsHtml}</table>
+    </div>
+  `;
+
+  cardCanvas.querySelectorAll(".desc-variant-row button").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const idx = parseInt(btn.dataset.descIndex, 10);
+      currentCardData.activeDescriptionIndex = idx;
+      const descBlock = cardCanvas.querySelector(".block-description .desc-text");
+      descBlock.textContent = descriptions[idx];
+      cardCanvas.querySelectorAll(".desc-variant-row button").forEach(b => b.classList.remove("active"));
+      btn.classList.add("active");
+    });
+  });
+
+  if (sortableInstance) sortableInstance.destroy();
+  sortableInstance = Sortable.create(cardCanvas, {
+    animation: 180,
+    handle: ".block",
+    ghostClass: "sortable-ghost",
+    chosenClass: "sortable-chosen",
+  });
+}
+
+styleSelect.addEventListener("change", () => {
+  if (!currentCardData) return;
+  currentCardData.style = styleSelect.value;
+  cardCanvas.className = "style-" + styleSelect.value;
+});
+
+/* ---- Collect the current (possibly hand-edited) state of the canvas ---- */
+function collectCardDataFromCanvas() {
+  if (!currentCardData) return null;
+
+  const headline = cardCanvas.querySelector(".block-headline")?.textContent.trim() || currentCardData.headline;
+  const description = cardCanvas.querySelector(".block-description .desc-text")?.textContent.trim() || "";
+  const advantages = Array.from(cardCanvas.querySelectorAll(".block-advantages li")).map(li => li.textContent.trim());
+  const characteristics = Array.from(cardCanvas.querySelectorAll(".block-table tr")).map(tr => {
+    const cells = tr.querySelectorAll("td");
+    return { name: cells[0]?.textContent.trim() || "", value: cells[1]?.textContent.trim() || "" };
+  });
+  const blockOrder = Array.from(cardCanvas.children).map(el => el.dataset.block);
+
+  currentCardData.headline = headline;
+  currentCardData.descriptions[currentCardData.activeDescriptionIndex || 0] = description;
+  currentCardData.advantages = advantages;
+  currentCardData.characteristics = characteristics;
+  currentCardData.blockOrder = blockOrder;
+  currentCardData.style = styleSelect.value;
+
+  return currentCardData;
+}
+
+/* ---- Save card to server ---- */
+saveCardBtn.addEventListener("click", async () => {
+  const data = collectCardDataFromCanvas();
+  if (!data) return;
+
+  saveCardBtn.disabled = true;
+  setCardStatus("Сохраняем карточку...");
+  try {
+    const res = await fetch(API_BASE + "/save_card", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: cardTitle.value.trim() || data.headline, full_data: data }),
+      credentials: "include",
+    });
+    const result = await res.json();
+    if (!res.ok) { setCardStatus(result.error || "Ошибка сохранения.", true); return; }
+    setCardStatus("Карточка сохранена.");
+    loadCardsHistory();
+  } catch (err) {
+    setCardStatus("Не удалось связаться с сервером: " + err.message, true);
+  } finally {
+    saveCardBtn.disabled = false;
+  }
+});
+
+/* ---- Export to PDF (client-side via html2canvas + jsPDF) ---- */
+exportPdfBtn.addEventListener("click", async () => {
+  collectCardDataFromCanvas();
+  exportPdfBtn.disabled = true;
+  setCardStatus("Готовим PDF...");
+  try {
+    const canvas = await html2canvas(cardCanvas, { backgroundColor: null, scale: 2 });
+    const imgData = canvas.toDataURL("image/png");
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF({ orientation: "portrait", unit: "px", format: [canvas.width, canvas.height] });
+    pdf.addImage(imgData, "PNG", 0, 0, canvas.width, canvas.height);
+    const fileName = (cardTitle.value.trim() || "card").replace(/[^a-zа-я0-9]+/gi, "_") + ".pdf";
+    pdf.save(fileName);
+    setCardStatus("PDF сохранён.");
+  } catch (err) {
+    setCardStatus("Не удалось создать PDF: " + err.message, true);
+  } finally {
+    exportPdfBtn.disabled = false;
+  }
+});
+
+/* ---- Cards history: load / restore / delete ---- */
+async function loadCardsHistory() {
+  cardsHistoryList.innerHTML = '<div class="empty">Загрузка...</div>';
+  try {
+    const res = await fetch(API_BASE + "/get_cards_history", { credentials: "include" });
+    const items = await res.json();
+    if (!Array.isArray(items) || items.length === 0) {
+      cardsHistoryList.innerHTML = '<div class="empty">Пока нет сохранённых карточек.</div>';
+      return;
     }
+    cardsHistoryList.innerHTML = "";
+    for (const item of items) {
+      const div = document.createElement("div");
+      div.className = "cards-history-item";
+      div.innerHTML = `
+        <div class="chi-info">
+          <div class="chi-title">${escapeHtml(item.title)}</div>
+          <div class="chi-date">${formatDate(item.created_at)}</div>
+        </div>
+        <button class="secondary" data-action="load">Загрузить</button>
+        <button class="danger-outline" data-action="delete">Удалить</button>
+      `;
+      div.querySelector('[data-action="load"]').addEventListener("click", () => {
+        if (!item.full_data) return;
+        currentCardData = item.full_data;
+        cardTitle.value = item.title;
+        selectedPhotoUrl = (item.full_data.photos && item.full_data.photos[0]) || "";
+        renderCardEditor(currentCardData);
+        cardEditorWrap.classList.add("visible");
+        cardEditorWrap.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+      div.querySelector('[data-action="delete"]').addEventListener("click", async () => {
+        try {
+          await fetch(API_BASE + "/delete_card", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: item.id }),
+            credentials: "include",
+          });
+          loadCardsHistory();
+        } catch (err) {
+          setCardStatus("Не удалось удалить карточку: " + err.message, true);
+        }
+      });
+      cardsHistoryList.appendChild(div);
+    }
+  } catch (err) {
+    cardsHistoryList.innerHTML = '<div class="empty">Не удалось загрузить историю карточек.</div>';
   }
-
-  function escapeHtml(str) {
-    const div = document.createElement("div");
-    div.textContent = str;
-    return div.innerHTML;
-  }
-
-  generateBtn.addEventListener("click", generate);
-  refreshBtn.addEventListener("click", loadHistory);
-
-  loadHistory();
+}
+refreshCardsBtn.addEventListener("click", loadCardsHistory);
 </script>
 </body>
 </html>
