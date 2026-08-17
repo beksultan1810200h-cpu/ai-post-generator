@@ -28,7 +28,9 @@
 ## 4. Добавь переменные окружения
 В разделе **Environment** (или на этапе создания сервиса) добавь:
 - `HF_API_KEY` = твой токен `hf_...` из шага 2
-- (опционально) `HF_MODEL` = `mistralai/Mixtral-8x7B-Instruct-v0.1` (или другая instruct-модель, доступная через Inference API)
+- (опционально) `HF_MODEL` = `meta-llama/Llama-3.1-8B-Instruct` (по умолчанию в коде). Можно указать другую instruct-модель, доступную через Hugging Face Inference Providers, например `Qwen/Qwen2.5-7B-Instruct` или `deepseek-ai/DeepSeek-V3`. При желании зафиксировать конкретного провайдера — допиши суффикс `:provider`, например `meta-llama/Llama-3.1-8B-Instruct:novita`.
+
+⚠️ Важно: в 2025 году Hugging Face полностью отключили старый эндпоинт `api-inference.huggingface.co` — он теперь возвращает `410 Gone` / не резолвится по DNS. Приложение уже настроено на актуальный роутер `https://router.huggingface.co/v1/chat/completions` (OpenAI-совместимый формат). Если раньше вы пробовали другой код с `api-inference.huggingface.co`, замените его — он больше не работает.
 
 ## 5. Деплой
 1. Нажми **Create Web Service**.
