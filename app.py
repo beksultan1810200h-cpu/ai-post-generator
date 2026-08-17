@@ -1,13 +1,17 @@
-import base64
-import json
 import os
 import re
+import io
+import html
+import json
+import time
+import random
+import string
 import sqlite3
 import uuid
 from datetime import datetime, timezone
 
 import requests
-from flask import Flask, request, jsonify, g, send_from_directory, make_response
+from flask import Flask, request, jsonify, g, send_from_directory, Response
 from flask_cors import CORS
 from dotenv import load_dotenv
 
@@ -18,62 +22,70 @@ load_dotenv()
 # --------------------------------------------------------------------------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "database.db")
+STATIC_DIR = os.path.join(BASE_DIR, "static")
+IMAGES_DIR = os.path.join(STATIC_DIR, "images")
+os.makedirs(IMAGES_DIR, exist_ok=True)
 
-# Hugging Face Inference Providers API (chat / text). Get a FREE token at
-# https://huggingface.co/settings/tokens and set it as the HF_API_KEY
-# environment variable on your hosting platform.
-# NOTE: the old "api-inference.huggingface.co/models/<id>" endpoint was
-# permanently discontinued by Hugging Face (returns 410 / fails DNS lookup).
-# All text inference now goes through the OpenAI-compatible chat-completions
-# router below.
-HF_API_KEY = os.environ.get("HF_API_KEY", "")
+# Text generation via Hugging Face Inference Providers (OpenAI-compatible router).
+# Get a FREE token at https://huggingface.co/settings/tokens
+HF_API_KEY = os.environ.get("HF_API_KEY") or os.environ.get("HF_TOKEN") or ""
 HF_MODEL = os.environ.get("HF_MODEL", "meta-llama/Llama-3.1-8B-Instruct")
-HF_API_URL = "https://router.huggingface.co/v1/chat/completions"
+HF_TEXT_API_URL = "https://router.huggingface.co/v1/chat/completions"
 
-# Hugging Face image generation (text-to-image) goes through the
-# provider-agnostic "hf-inference" REST route rather than the chat
-# completions route (image generation is not part of the OpenAI-compatible
-# chat API). This is used as a FREE fallback when REPLICATE_API_TOKEN is
-# not configured.
+# Image generation: Replicate (better quality, needs paid-ish token with free
+# trial credits) with a free Hugging Face fallback.
+REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "")
+REPLICATE_MODEL = os.environ.get("REPLICATE_MODEL", "black-forest-labs/flux-schnell")
 HF_IMAGE_MODEL = os.environ.get("HF_IMAGE_MODEL", "stabilityai/stable-diffusion-2-1")
 HF_IMAGE_API_URL = f"https://router.huggingface.co/hf-inference/models/{HF_IMAGE_MODEL}"
 
-# Replicate (optional, paid after free credits run out). Sign up at
-# https://replicate.com, grab a token at https://replicate.com/account/api-tokens
-# and set REPLICATE_API_TOKEN. New accounts get some free trial credit.
-REPLICATE_API_TOKEN = os.environ.get("REPLICATE_API_TOKEN", "")
-REPLICATE_MODEL_VERSION = os.environ.get(
-    # black-forest-labs/flux-schnell is fast & cheap; override via env if needed
-    # (e.g. "stability-ai/stable-diffusion-3").
-    "REPLICATE_MODEL",
-    "black-forest-labs/flux-schnell",
-)
-REPLICATE_PREDICTIONS_URL = "https://api.replicate.com/v1/models/{model}/predictions"
+app = Flask(__name__, static_folder=STATIC_DIR, static_url_path="/static")
+CORS(app, supports_credentials=True)
 
-SESSION_COOKIE_NAME = "card_session_id"
-SESSION_COOKIE_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
+SESSION_COOKIE_NAME = "mp_session_id"
 
-PHOTO_STYLES = {
-    "studio": "professional studio product photography, clean seamless white background, softbox lighting, high detail",
-    "model": "lifestyle photo of a person using the product naturally, realistic, soft daylight, editorial style",
-    "interior": "product placed in a cozy modern interior scene, natural context, warm ambient lighting",
-    "closeup": "extreme macro close-up of the product surface and texture, sharp focus, studio lighting",
+# --------------------------------------------------------------------------
+# Category knowledge base
+# --------------------------------------------------------------------------
+CATEGORIES = [
+    "Одежда", "Электроника", "Дом", "Детские товары",
+    "Косметика", "Продукты", "Спорт", "Авто",
+]
+
+CATEGORY_CHAR_HINTS = {
+    "Одежда": ["Материал", "Размер", "Цвет", "Сезон", "Страна производства", "Состав", "Уход", "Крой", "Плотность ткани", "Пол"],
+    "Электроника": ["Процессор", "Оперативная память", "Встроенная память", "Диагональ экрана", "Разрешение экрана", "Вес", "Аккумулятор", "Порты", "Операционная система", "Гарантия"],
+    "Дом": ["Материал", "Размеры (ДхШхВ)", "Цвет", "Вес", "Страна производства", "Уход за изделием", "Комплектация", "Стиль", "Назначение", "Гарантия"],
+    "Детские товары": ["Возраст", "Материал", "Сертификат безопасности", "Размер", "Цвет", "Страна производства", "Вес", "Комплектация", "Пол", "Особенности"],
+    "Косметика": ["Объём", "Тип кожи/волос", "Состав", "Страна производства", "Срок годности", "Способ применения", "Назначение", "Аромат", "Текстура", "Сертификация"],
+    "Продукты": ["Вес/Объём", "Состав", "Срок годности", "Условия хранения", "Пищевая ценность", "Страна производства", "Калорийность", "Упаковка", "Вкус", "Особенности"],
+    "Спорт": ["Материал", "Размер", "Вес", "Назначение", "Уровень нагрузки", "Комплектация", "Цвет", "Страна производства", "Сезон", "Гарантия"],
+    "Авто": ["Совместимость (марки авто)", "Материал", "Размеры", "Вес", "Артикул производителя", "Страна производства", "Комплектация", "Назначение", "Цвет", "Гарантия"],
 }
-PHOTO_STYLE_LABELS = {
-    "studio": "Студия",
-    "model": "Модель",
-    "interior": "Интерьер",
-    "closeup": "Крупный план",
+CATEGORY_CHAR_HINTS_DEFAULT = ["Материал", "Размеры", "Цвет", "Вес", "Страна производства", "Комплектация", "Гарантия", "Назначение", "Бренд", "Артикул"]
+
+CATEGORY_MP_MAP = {
+    "Одежда": {"WB": "Женщинам / Одежда", "OZON": "Одежда, обувь и аксессуары", "YM": "Одежда и обувь"},
+    "Электроника": {"WB": "Электроника", "OZON": "Электроника", "YM": "Электроника"},
+    "Дом": {"WB": "Дом", "OZON": "Дом и сад", "YM": "Дом и дача"},
+    "Детские товары": {"WB": "Детям", "OZON": "Детские товары", "YM": "Детские товары"},
+    "Косметика": {"WB": "Красота", "OZON": "Красота и здоровье", "YM": "Красота и здоровье"},
+    "Продукты": {"WB": "Продукты", "OZON": "Продукты питания", "YM": "Продукты"},
+    "Спорт": {"WB": "Спорт", "OZON": "Спорттовары", "YM": "Спорт и отдых"},
+    "Авто": {"WB": "Автотовары", "OZON": "Автотовары", "YM": "Автотовары"},
 }
 
-CARD_STYLE_PRESETS = {"minimal", "luxury", "kids", "techno", "eco"}
+PROMO_RATE_BY_CATEGORY = {
+    "Одежда": 0.12, "Электроника": 0.07, "Дом": 0.10, "Детские товары": 0.11,
+    "Косметика": 0.13, "Продукты": 0.09, "Спорт": 0.10, "Авто": 0.08,
+}
 
-app = Flask(__name__, static_folder=None)
-CORS(app, supports_credentials=True)  # allow requests from any origin
+CLOTHING_LIKE = {"Одежда", "Спорт"}
+HOME_LIKE = {"Дом"}
 
 
 # --------------------------------------------------------------------------
-# Database helpers
+# DB helpers
 # --------------------------------------------------------------------------
 def get_db():
     if "db" not in g:
@@ -93,24 +105,12 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.execute(
         """
-        CREATE TABLE IF NOT EXISTS requests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id TEXT NOT NULL,
-            prompt TEXT NOT NULL,
-            result TEXT NOT NULL,
-            created_at TEXT NOT NULL
-        )
-        """
-    )
-    # New table for the product-card constructor. full_data stores the
-    # entire card state (blocks, style, texts, photo urls) as a JSON string
-    # so the editor can be fully restored later.
-    conn.execute(
-        """
         CREATE TABLE IF NOT EXISTS cards (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             session_id TEXT NOT NULL,
+            marketplace TEXT NOT NULL,
             title TEXT NOT NULL,
+            category TEXT,
             full_data TEXT NOT NULL,
             created_at TEXT NOT NULL
         )
@@ -124,44 +124,36 @@ init_db()
 
 
 # --------------------------------------------------------------------------
-# Session (cookie) helpers for the card constructor
+# Session (cookie-based, no Flask-Login needed)
 # --------------------------------------------------------------------------
-def get_session_id():
-    """Returns (session_id, is_new). Does not set the cookie itself -
-    call attach_session_cookie() on the outgoing response if is_new."""
+@app.before_request
+def ensure_session():
     sid = request.cookies.get(SESSION_COOKIE_NAME)
-    if sid:
-        return sid, False
-    return str(uuid.uuid4()), True
+    g.session_id = sid or uuid.uuid4().hex
+    g.new_session = sid is None
 
 
-def attach_session_cookie(resp, session_id, is_new):
-    if is_new:
+@app.after_request
+def attach_session_cookie(resp):
+    if getattr(g, "new_session", False):
         resp.set_cookie(
-            SESSION_COOKIE_NAME,
-            session_id,
-            max_age=SESSION_COOKIE_MAX_AGE,
-            httponly=True,
-            samesite="Lax",
+            SESSION_COOKIE_NAME, g.session_id,
+            max_age=60 * 60 * 24 * 365, httponly=True, samesite="Lax",
         )
     return resp
 
 
 # --------------------------------------------------------------------------
-# Hugging Face: text generation
+# Hugging Face text generation
 # --------------------------------------------------------------------------
-def call_huggingface_chat(system_prompt: str, user_prompt: str, max_tokens=500, temperature=0.7) -> str:
+def call_huggingface_chat(system_prompt: str, user_prompt: str, max_tokens: int = 1600) -> str:
     if not HF_API_KEY:
         raise RuntimeError(
             "HF_API_KEY не задан. Получите бесплатный токен на "
             "https://huggingface.co/settings/tokens и добавьте его как "
             "переменную окружения HF_API_KEY."
         )
-
-    headers = {
-        "Authorization": f"Bearer {HF_API_KEY}",
-        "Content-Type": "application/json",
-    }
+    headers = {"Authorization": f"Bearer {HF_API_KEY}", "Content-Type": "application/json"}
     payload = {
         "model": HF_MODEL,
         "messages": [
@@ -169,17 +161,13 @@ def call_huggingface_chat(system_prompt: str, user_prompt: str, max_tokens=500, 
             {"role": "user", "content": user_prompt},
         ],
         "max_tokens": max_tokens,
-        "temperature": temperature,
+        "temperature": 0.6,
         "stream": False,
     }
-
-    resp = requests.post(HF_API_URL, headers=headers, json=payload, timeout=90)
-
+    resp = requests.post(HF_TEXT_API_URL, headers=headers, json=payload, timeout=90)
     if resp.status_code != 200:
         raise RuntimeError(f"HuggingFace API error {resp.status_code}: {resp.text[:300]}")
-
     data = resp.json()
-
     try:
         return data["choices"][0]["message"]["content"].strip()
     except (KeyError, IndexError, TypeError):
@@ -188,157 +176,162 @@ def call_huggingface_chat(system_prompt: str, user_prompt: str, max_tokens=500, 
         raise RuntimeError(f"Неожиданный формат ответа HuggingFace: {str(data)[:300]}")
 
 
-def call_huggingface(prompt: str) -> str:
-    """Kept for backward compatibility with the original /generate route."""
-    return call_huggingface_chat(
-        "Ты — маркетолог-копирайтер. Пиши короткие продающие посты на русском.",
-        f"Напиши короткий продающий пост на основе описания товара: {prompt}",
-    )
+def extract_json(text: str) -> dict:
+    text = text.strip()
+    text = re.sub(r"^```(?:json)?", "", text, flags=re.IGNORECASE).strip()
+    text = re.sub(r"```$", "", text).strip()
+    start, end = text.find("{"), text.rfind("}")
+    if start != -1 and end != -1 and end > start:
+        text = text[start:end + 1]
+    return json.loads(text)
 
 
-def extract_json(text: str):
-    """The model is asked to reply with pure JSON, but instruct-models
-    sometimes wrap it in ```json fences or add stray text. This pulls out
-    the first {...} block and parses it."""
-    cleaned = text.strip()
-    cleaned = re.sub(r"^```(json)?", "", cleaned.strip(), flags=re.IGNORECASE).strip()
-    cleaned = re.sub(r"```$", "", cleaned.strip()).strip()
-
-    try:
-        return json.loads(cleaned)
-    except json.JSONDecodeError:
-        pass
-
-    match = re.search(r"\{.*\}", cleaned, flags=re.DOTALL)
-    if match:
-        return json.loads(match.group(0))
-
-    raise ValueError("Модель не вернула корректный JSON")
+SYSTEM_PROMPT_CARD = (
+    "Ты — профессиональный копирайтер и SEO-специалист маркетплейсов Wildberries, "
+    "Ozon и Яндекс.Маркет. Отвечай СТРОГО в формате JSON без markdown-разметки, "
+    "без ```json, без пояснений до или после — только валидный JSON-объект."
+)
 
 
-def generate_card_content(title, description, advantages_raw):
-    system_prompt = (
-        "Ты — профессиональный копирайтер маркетплейсов. Отвечай ТОЛЬКО валидным JSON, "
-        "без markdown-разметки, без пояснений до или после. Пиши на русском языке."
-    )
-    user_prompt = f"""
-Составь контент для карточки товара на маркетплейсе.
-Название товара: {title}
+def build_card_text_prompt(title, category, brand, price, description, advantages_raw, hints):
+    hints_str = ", ".join(hints)
+    return f"""Товар: {title}
+Категория: {category}
+Бренд: {brand or "не указан"}
+Цена: {price or "не указана"} руб.
 Описание от продавца: {description}
-Ключевые преимущества (черновик от продавца): {advantages_raw or "не указаны, придумай сам"}
+Ключевые преимущества от продавца: {advantages_raw or "не указаны"}
 
-Верни JSON строго со следующей структурой (без лишних полей):
+Сгенерируй карточку товара для маркетплейсов. Характеристики подбирай под категорию
+"{category}", ориентируйся на параметры: {hints_str} (допустимо заменить похожими,
+если не подходят к товару).
+
+Верни ТОЛЬКО JSON со следующей структурой:
 {{
-  "headline": "цепляющий заголовок карточки, до 70 символов",
-  "descriptions": ["вариант описания 1 (2-3 предложения)", "вариант описания 2", "вариант описания 3"],
-  "advantages": ["преимущество 1", "преимущество 2", "преимущество 3", "преимущество 4", "преимущество 5"],
-  "characteristics": [
-    {{"name": "Характеристика 1", "value": "значение"}},
-    {{"name": "Характеристика 2", "value": "значение"}},
-    {{"name": "Характеристика 3", "value": "значение"}},
-    {{"name": "Характеристика 4", "value": "значение"}},
-    {{"name": "Характеристика 5", "value": "значение"}},
-    {{"name": "Характеристика 6", "value": "значение"}}
-  ]
+  "title_wb": "название товара до 40 символов",
+  "title_ozon": "название товара до 60 символов",
+  "title_ym": "название товара до 60 символов",
+  "description_short": "короткое описание, 1-2 предложения",
+  "description_medium": "среднее SEO-описание, 3-5 предложений",
+  "description_long": "расширенное описание для бренд-зоны, 6-10 предложений",
+  "characteristics": [{{"param": "название параметра", "value": "значение"}}],
+  "advantages": ["преимущество с эмодзи в начале"],
+  "seo_keywords": {{"wb": ["слово"], "ozon": ["слово"], "ym": ["слово"]}}
 }}
-""".strip()
-
-    raw = call_huggingface_chat(system_prompt, user_prompt, max_tokens=900, temperature=0.6)
-    data = extract_json(raw)
-
-    data.setdefault("headline", title)
-    data.setdefault("descriptions", [description] if description else [""])
-    data.setdefault("advantages", [])
-    data.setdefault("characteristics", [])
-    return data
+В characteristics должно быть ровно 10 пунктов, в advantages ровно 5,
+в каждом списке seo_keywords ровно 10 слов. Пиши на русском языке."""
 
 
 # --------------------------------------------------------------------------
-# Image generation: Replicate (preferred) with Hugging Face fallback
+# Image generation (Replicate primary, Hugging Face free fallback)
 # --------------------------------------------------------------------------
-def generate_image_replicate(prompt: str) -> str:
-    """Returns a data URI (base64) or a direct image URL. Raises on failure."""
+def save_image(img_bytes: bytes, ext: str = "png") -> str:
+    filename = f"{uuid.uuid4().hex}.{ext}"
+    path = os.path.join(IMAGES_DIR, filename)
+    with open(path, "wb") as f:
+        f.write(img_bytes)
+    return f"/static/images/{filename}"
+
+
+def call_replicate_image(prompt: str) -> bytes:
+    if not REPLICATE_API_TOKEN:
+        raise RuntimeError("REPLICATE_API_TOKEN не задан")
+    url = f"https://api.replicate.com/v1/models/{REPLICATE_MODEL}/predictions"
     headers = {
-        "Authorization": f"Bearer {REPLICATE_API_TOKEN}",
+        "Authorization": f"Token {REPLICATE_API_TOKEN}",
         "Content-Type": "application/json",
-        "Prefer": "wait",  # ask Replicate to block until the prediction finishes (up to ~60s)
+        "Prefer": "wait=60",
     }
-    url = REPLICATE_PREDICTIONS_URL.format(model=REPLICATE_MODEL_VERSION)
-    payload = {"input": {"prompt": prompt}}
-
-    resp = requests.post(url, headers=headers, json=payload, timeout=90)
+    resp = requests.post(url, headers=headers, json={"input": {"prompt": prompt}}, timeout=70)
     if resp.status_code not in (200, 201):
-        raise RuntimeError(f"Replicate error {resp.status_code}: {resp.text[:300]}")
-
+        raise RuntimeError(f"Replicate API error {resp.status_code}: {resp.text[:300]}")
     data = resp.json()
+    status = data.get("status")
     output = data.get("output")
-
-    # Replicate may still be processing even with Prefer: wait on cold starts;
-    # poll the prediction URL for a short while if so.
-    get_url = data.get("urls", {}).get("get")
+    get_url = (data.get("urls") or {}).get("get")
     attempts = 0
-    while data.get("status") in ("starting", "processing") and get_url and attempts < 20:
-        import time
-
-        time.sleep(2)
-        poll = requests.get(get_url, headers=headers, timeout=30)
-        data = poll.json()
-        output = data.get("output")
+    while status not in ("succeeded", "failed", "canceled") and get_url and attempts < 20:
+        time.sleep(3)
+        r2 = requests.get(get_url, headers=headers, timeout=30)
+        d2 = r2.json()
+        status = d2.get("status")
+        output = d2.get("output")
         attempts += 1
-
-    if data.get("status") == "failed":
-        raise RuntimeError(f"Replicate prediction failed: {data.get('error')}")
-
-    if isinstance(output, list) and output:
-        return output[0]
-    if isinstance(output, str) and output:
-        return output
-
-    raise RuntimeError("Replicate не вернул изображение")
+    if status != "succeeded" or not output:
+        raise RuntimeError(f"Replicate: генерация не удалась (status={status})")
+    img_url = output[0] if isinstance(output, list) else output
+    img_resp = requests.get(img_url, timeout=60)
+    if img_resp.status_code != 200:
+        raise RuntimeError("Не удалось скачать изображение с Replicate")
+    return img_resp.content
 
 
-def generate_image_hf(prompt: str) -> str:
+def call_hf_image(prompt: str) -> bytes:
     if not HF_API_KEY:
-        raise RuntimeError("HF_API_KEY не задан, fallback-генерация изображений недоступна.")
-
-    headers = {
-        "Authorization": f"Bearer {HF_API_KEY}",
-        "Content-Type": "application/json",
-    }
-    resp = requests.post(HF_IMAGE_API_URL, headers=headers, json={"inputs": prompt}, timeout=120)
-
+        raise RuntimeError("HF_API_KEY не задан")
+    headers = {"Authorization": f"Bearer {HF_API_KEY}"}
+    resp = requests.post(HF_IMAGE_API_URL, headers=headers, json={"inputs": prompt}, timeout=60)
     if resp.status_code != 200:
-        raise RuntimeError(f"HuggingFace image API error {resp.status_code}: {resp.text[:300]}")
-
-    content_type = resp.headers.get("content-type", "")
-    if content_type.startswith("image/"):
-        b64 = base64.b64encode(resp.content).decode("utf-8")
-        return f"data:{content_type};base64,{b64}"
-
-    # Some providers return JSON with a base64 field instead of raw bytes
-    try:
-        data = resp.json()
-    except ValueError:
-        raise RuntimeError("Неожиданный ответ от HuggingFace image API")
-
-    if isinstance(data, dict) and "error" in data:
-        raise RuntimeError(f"HuggingFace image API error: {data['error']}")
-
-    raise RuntimeError(f"Неожиданный формат ответа HuggingFace image API: {str(data)[:300]}")
+        raise RuntimeError(f"HF Image API error {resp.status_code}: {resp.text[:300]}")
+    if "image" not in resp.headers.get("Content-Type", ""):
+        raise RuntimeError(f"HF Image API: неожиданный ответ ({resp.text[:200]})")
+    return resp.content
 
 
-def generate_image(prompt: str) -> str:
+def generate_single_image(prompt: str):
+    errors = []
     if REPLICATE_API_TOKEN:
         try:
-            return generate_image_replicate(prompt)
-        except Exception as e:  # fall through to HF on any Replicate failure
-            print(f"[generate_image] Replicate failed, falling back to HF: {e}")
+            return save_image(call_replicate_image(prompt)), None
+        except Exception as e:
+            errors.append(f"Replicate: {e}")
+    try:
+        return save_image(call_hf_image(prompt)), None
+    except Exception as e:
+        errors.append(f"HuggingFace: {e}")
+    return None, "; ".join(errors)
 
-    return generate_image_hf(prompt)
+
+def build_photo_prompt(title, description, keywords, category, photo_type):
+    base = f"Professional e-commerce product photography of {title}. {description[:150]}. Keywords: {keywords}."
+    variants = {
+        "studio": " Studio shot, pure white background, soft even lighting, high resolution, centered composition, no text, no watermark.",
+        "model": " Photo of a model wearing/using the product, natural lighting, lifestyle fashion photography, neutral background, no text, no watermark.",
+        "interior": " Product placed in a modern cozy interior room setting, realistic lighting, home decor photography, no text, no watermark.",
+        "closeup": " Extreme close-up macro shot showing product details and texture, sharp focus, studio lighting, no text, no watermark.",
+    }
+    return base + variants.get(photo_type, variants["studio"])
 
 
 # --------------------------------------------------------------------------
-# Routes: original post generator (UNCHANGED)
+# Marketplace helpers
+# --------------------------------------------------------------------------
+def generate_article(marketplace: str) -> str:
+    prefix = {"WB": "WB", "OZON": "OZ", "YM": "YM"}.get(marketplace, "MP")
+    number = "".join(random.choices(string.digits, k=8))
+    return f"{prefix}-{number}"
+
+
+def estimate_promo_cost(price, category):
+    try:
+        price_val = float(price)
+    except (TypeError, ValueError):
+        return {"estimated_daily_budget": None, "note": "Укажите цену, чтобы увидеть ориентировочный расчёт."}
+    rate = PROMO_RATE_BY_CATEGORY.get(category, 0.10)
+    estimate = round(price_val * rate, 2)
+    return {
+        "estimated_daily_budget": estimate,
+        "note": "Ориентировочный расчёт (цена × средний % на продвижение по категории). "
+                "Не является официальной ставкой площадки.",
+    }
+
+
+def esc(s):
+    return html.escape(str(s if s is not None else ""))
+
+
+# --------------------------------------------------------------------------
+# Routes: pages
 # --------------------------------------------------------------------------
 @app.route("/")
 def index():
@@ -350,286 +343,220 @@ def ping():
     return jsonify({"status": "ok", "time": datetime.now(timezone.utc).isoformat()})
 
 
-@app.route("/generate", methods=["POST"])
-def generate():
-    data = request.get_json(silent=True) or {}
-    prompt = (data.get("prompt") or "").strip()
-    user_id = (data.get("user_id") or "").strip() or str(uuid.uuid4())
-
-    if not prompt:
-        return jsonify({"error": "Поле 'prompt' обязательно"}), 400
-
-    try:
-        result = call_huggingface(prompt)
-    except RuntimeError as e:
-        return jsonify({"error": str(e)}), 502
-    except requests.exceptions.RequestException as e:
-        return jsonify({"error": f"Сетевая ошибка при обращении к HuggingFace: {e}"}), 502
-
-    created_at = datetime.now(timezone.utc).isoformat()
-
-    db = get_db()
-    db.execute(
-        "INSERT INTO requests (user_id, prompt, result, created_at) VALUES (?, ?, ?, ?)",
-        (user_id, prompt, result, created_at),
-    )
-    db.commit()
-
-    return jsonify(
-        {
-            "user_id": user_id,
-            "prompt": prompt,
-            "result": result,
-            "created_at": created_at,
-        }
-    )
-
-
-@app.route("/history", methods=["GET"])
-def history():
-    user_id = request.args.get("user_id", "").strip()
-    db = get_db()
-
-    if user_id:
-        rows = db.execute(
-            "SELECT id, user_id, prompt, result, created_at FROM requests "
-            "WHERE user_id = ? ORDER BY id DESC LIMIT 100",
-            (user_id,),
-        ).fetchall()
-    else:
-        rows = db.execute(
-            "SELECT id, user_id, prompt, result, created_at FROM requests "
-            "ORDER BY id DESC LIMIT 100"
-        ).fetchall()
-
-    return jsonify([dict(row) for row in rows])
-
-
-@app.route("/stats", methods=["GET"])
-def stats():
-    db = get_db()
-    total = db.execute("SELECT COUNT(*) AS c FROM requests").fetchone()["c"]
-    users = db.execute("SELECT COUNT(DISTINCT user_id) AS c FROM requests").fetchone()["c"]
-    return jsonify({"total_requests": total, "unique_users": users})
-
-
 # --------------------------------------------------------------------------
-# Routes: product card constructor (NEW)
+# Routes: card content generation
 # --------------------------------------------------------------------------
 @app.route("/generate_card", methods=["POST"])
 def generate_card():
     data = request.get_json(silent=True) or {}
     title = (data.get("title") or "").strip()
+    category = (data.get("category") or "").strip()
+    brand = (data.get("brand") or "").strip()
+    price = data.get("price")
     description = (data.get("description") or "").strip()
     advantages_raw = (data.get("advantages") or "").strip()
-    style = (data.get("style") or "minimal").strip()
-    photo_type = (data.get("photo_type") or "studio").strip()
 
-    if not title:
-        return jsonify({"error": "Поле 'title' обязательно"}), 400
-    if style not in CARD_STYLE_PRESETS:
-        style = "minimal"
-    if photo_type not in PHOTO_STYLES:
-        photo_type = "studio"
+    if not title or not category or not description:
+        return jsonify({"error": "Заполните название, категорию и описание"}), 400
 
-    session_id, is_new = get_session_id()
+    hints = CATEGORY_CHAR_HINTS.get(category, CATEGORY_CHAR_HINTS_DEFAULT)
+    prompt = build_card_text_prompt(title, category, brand, price, description, advantages_raw, hints)
 
     try:
-        content = generate_card_content(title, description, advantages_raw)
+        raw = call_huggingface_chat(SYSTEM_PROMPT_CARD, prompt)
+        content = extract_json(raw)
     except RuntimeError as e:
         return jsonify({"error": str(e)}), 502
-    except ValueError as e:
-        return jsonify({"error": f"Не удалось разобрать ответ модели: {e}"}), 502
     except requests.exceptions.RequestException as e:
         return jsonify({"error": f"Сетевая ошибка при обращении к HuggingFace: {e}"}), 502
+    except (ValueError, json.JSONDecodeError):
+        return jsonify({"error": "Не удалось разобрать ответ ИИ как JSON. Попробуйте ещё раз."}), 502
 
-    payload = {
+    articles = {mp: generate_article(mp) for mp in ("WB", "OZON", "YM")}
+    suggested_categories = CATEGORY_MP_MAP.get(category, {})
+    promo_estimate = estimate_promo_cost(price, category)
+
+    return jsonify({
         "title": title,
-        "style": style,
-        "photo_type": photo_type,
-        "headline": content.get("headline", title),
-        "descriptions": content.get("descriptions", []),
-        "advantages": content.get("advantages", []),
-        "characteristics": content.get("characteristics", []),
-        "photos": [],
-        "generated_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-    resp = make_response(jsonify(payload))
-    attach_session_cookie(resp, session_id, is_new)
-    return resp
+        "brand": brand,
+        "category": category,
+        "price": price,
+        "content": content,
+        "suggested_categories": suggested_categories,
+        "articles": articles,
+        "promo_estimate": promo_estimate,
+    })
 
 
 @app.route("/generate_photo", methods=["POST"])
 def generate_photo():
     data = request.get_json(silent=True) or {}
-    prompt = (data.get("prompt") or "").strip()
+    title = (data.get("title") or "").strip()
+    description = (data.get("description") or "").strip()
+    keywords = (data.get("keywords") or "").strip()
+    category = (data.get("category") or "").strip()
+    requested_types = data.get("types")
 
-    if not prompt:
-        return jsonify({"error": "Поле 'prompt' обязательно (краткое описание товара для фото)"}), 400
+    if not title:
+        return jsonify({"error": "Укажите название товара"}), 400
 
-    variants = []
-    errors = []
+    if requested_types:
+        types = requested_types
+    else:
+        types = ["studio", "studio2", "closeup"]
+        if category in CLOTHING_LIKE:
+            types.append("model")
+        if category in HOME_LIKE:
+            types.append("interior")
 
-    for style_key, style_suffix in PHOTO_STYLES.items():
-        full_prompt = f"{prompt}, {style_suffix}"
-        try:
-            image = generate_image(full_prompt)
-            variants.append(
-                {"style": style_key, "label": PHOTO_STYLE_LABELS[style_key], "image": image}
-            )
-        except Exception as e:
-            errors.append(f"{PHOTO_STYLE_LABELS[style_key]}: {e}")
+    images, errors = {}, {}
+    for t in types:
+        base_type = t.replace("2", "")
+        prompt = build_photo_prompt(title, description, keywords, category, base_type)
+        url, err = generate_single_image(prompt)
+        if url:
+            images.setdefault(base_type, []).append(url)
+        if err:
+            errors[t] = err
 
-    if not variants:
-        return (
-            jsonify(
-                {
-                    "error": "Не удалось сгенерировать ни одного изображения. "
-                    + " | ".join(errors)
-                }
-            ),
-            502,
-        )
+    if not images:
+        return jsonify({"error": "Не удалось сгенерировать ни одного изображения", "details": errors}), 502
 
-    return jsonify({"variants": variants, "errors": errors})
+    return jsonify({"images": images, "errors": errors})
 
 
+# --------------------------------------------------------------------------
+# Routes: persistence
+# --------------------------------------------------------------------------
 @app.route("/save_card", methods=["POST"])
 def save_card():
     data = request.get_json(silent=True) or {}
-    title = (data.get("title") or "Без названия").strip()
-    full_data = data.get("full_data")
-
-    if full_data is None:
-        return jsonify({"error": "Поле 'full_data' обязательно"}), 400
-
-    try:
-        full_data_str = json.dumps(full_data, ensure_ascii=False)
-    except (TypeError, ValueError) as e:
-        return jsonify({"error": f"Некорректный формат full_data: {e}"}), 400
-
-    session_id, is_new = get_session_id()
-    created_at = datetime.now(timezone.utc).isoformat()
+    marketplace = (data.get("marketplace") or "WB").upper()
+    title = data.get("title") or "Без названия"
+    category = data.get("category") or ""
+    full_data = json.dumps(data, ensure_ascii=False)
 
     db = get_db()
     cur = db.execute(
-        "INSERT INTO cards (session_id, title, full_data, created_at) VALUES (?, ?, ?, ?)",
-        (session_id, title, full_data_str, created_at),
+        "INSERT INTO cards (session_id, marketplace, title, category, full_data, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        (g.session_id, marketplace, title, category, full_data, datetime.now(timezone.utc).isoformat()),
     )
     db.commit()
-
-    resp = make_response(
-        jsonify({"id": cur.lastrowid, "title": title, "created_at": created_at})
-    )
-    attach_session_cookie(resp, session_id, is_new)
-    return resp
+    return jsonify({"id": cur.lastrowid, "status": "saved"})
 
 
-@app.route("/get_cards_history", methods=["GET"])
-def get_cards_history():
-    session_id, is_new = get_session_id()
-
+@app.route("/get_history", methods=["GET"])
+def get_history():
+    marketplace = (request.args.get("marketplace") or "").strip().upper()
     db = get_db()
-    rows = db.execute(
-        "SELECT id, title, full_data, created_at FROM cards "
-        "WHERE session_id = ? ORDER BY id DESC LIMIT 10",
-        (session_id,),
-    ).fetchall()
+    if marketplace and marketplace != "ALL":
+        rows = db.execute(
+            "SELECT id, marketplace, title, category, full_data, created_at FROM cards "
+            "WHERE session_id = ? AND marketplace = ? ORDER BY id DESC LIMIT 15",
+            (g.session_id, marketplace),
+        ).fetchall()
+    else:
+        rows = db.execute(
+            "SELECT id, marketplace, title, category, full_data, created_at FROM cards "
+            "WHERE session_id = ? ORDER BY id DESC LIMIT 15",
+            (g.session_id,),
+        ).fetchall()
 
-    items = []
-    for row in rows:
-        item = dict(row)
+    result = []
+    for r in rows:
+        thumbnail = None
         try:
-            item["full_data"] = json.loads(item["full_data"])
-        except (TypeError, ValueError):
-            item["full_data"] = None
-        items.append(item)
+            fd = json.loads(r["full_data"])
+            for v in (fd.get("photos") or {}).values():
+                if isinstance(v, list) and v:
+                    thumbnail = v[0]
+                    break
+        except Exception:
+            pass
+        result.append({
+            "id": r["id"], "marketplace": r["marketplace"], "title": r["title"],
+            "category": r["category"], "created_at": r["created_at"], "thumbnail": thumbnail,
+        })
+    return jsonify(result)
 
-    resp = make_response(jsonify(items))
-    attach_session_cookie(resp, session_id, is_new)
-    return resp
+
+@app.route("/get_card/<int:card_id>", methods=["GET"])
+def get_card(card_id):
+    db = get_db()
+    row = db.execute(
+        "SELECT full_data FROM cards WHERE id = ? AND session_id = ?", (card_id, g.session_id)
+    ).fetchone()
+    if not row:
+        return jsonify({"error": "Карточка не найдена"}), 404
+    return jsonify(json.loads(row["full_data"]))
 
 
 @app.route("/delete_card", methods=["POST"])
 def delete_card():
     data = request.get_json(silent=True) or {}
     card_id = data.get("id")
-
-    if not card_id:
-        return jsonify({"error": "Поле 'id' обязательно"}), 400
-
-    session_id, is_new = get_session_id()
-
     db = get_db()
-    db.execute(
-        "DELETE FROM cards WHERE id = ? AND session_id = ?",
-        (card_id, session_id),
-    )
+    db.execute("DELETE FROM cards WHERE id = ? AND session_id = ?", (card_id, g.session_id))
     db.commit()
+    return jsonify({"status": "deleted"})
 
-    resp = make_response(jsonify({"deleted": True, "id": card_id}))
-    attach_session_cookie(resp, session_id, is_new)
-    return resp
+
+# --------------------------------------------------------------------------
+# Routes: export
+# --------------------------------------------------------------------------
+def render_print_html(data: dict) -> str:
+    content = data.get("content") or {}
+    title = data.get("title") or "Товар"
+    brand = data.get("brand") or ""
+    price = data.get("price") or ""
+    photos = data.get("photos") or {}
+
+    first_photo = ""
+    for v in photos.values():
+        if isinstance(v, list) and v:
+            first_photo = v[0]
+            break
+
+    chars_rows = "".join(
+        f"<tr><td>{esc(c.get('param',''))}</td><td>{esc(c.get('value',''))}</td></tr>"
+        for c in (content.get("characteristics") or [])
+    )
+    adv_items = "".join(f"<li>{esc(a)}</li>" for a in (content.get("advantages") or []))
+    description = content.get("description_medium") or content.get("description_short") or ""
+
+    return f"""<!DOCTYPE html>
+<html lang="ru"><head><meta charset="UTF-8"><title>{esc(title)} — презентация</title>
+<style>
+ body{{font-family:Arial,sans-serif;color:#222;padding:40px;max-width:800px;margin:0 auto;}}
+ h1{{font-size:26px;margin-bottom:4px;}}
+ .brand{{color:#888;margin-bottom:20px;}}
+ .price{{font-size:22px;font-weight:bold;color:#e63946;margin-bottom:20px;}}
+ img.photo{{max-width:100%;border-radius:12px;margin-bottom:20px;}}
+ table{{width:100%;border-collapse:collapse;margin-bottom:20px;}}
+ td{{border:1px solid #ddd;padding:8px;font-size:14px;}}
+ ul{{padding-left:20px;}}
+ li{{margin-bottom:6px;}}
+ @media print {{ body{{padding:0;}} }}
+</style></head>
+<body>
+<h1>{esc(title)}</h1>
+<div class="brand">{esc(brand)}</div>
+{f'<div class="price">{esc(str(price))} ₽</div>' if price else ''}
+{f'<img class="photo" src="{esc(first_photo)}">' if first_photo else ''}
+<p>{esc(description)}</p>
+<h3>Характеристики</h3>
+<table>{chars_rows}</table>
+<h3>Преимущества</h3>
+<ul>{adv_items}</ul>
+<script>window.onload = function(){{ setTimeout(function(){{ window.print(); }}, 300); }};</script>
+</body></html>"""
 
 
 @app.route("/export_pdf", methods=["POST"])
 def export_pdf():
-    """The primary PDF export happens fully client-side (html2canvas + jsPDF,
-    see index.html) so no server-side PDF library is required. This route is
-    a lightweight fallback: given the card's full_data it returns a clean,
-    print-ready HTML snippet the browser can open in a new tab and print /
-    'Save as PDF' from, useful if html2canvas ever fails on a given browser.
-    """
     data = request.get_json(silent=True) or {}
-    full_data = data.get("full_data") or {}
-
-    headline = full_data.get("headline") or full_data.get("title") or ""
-    description = ""
-    descriptions = full_data.get("descriptions") or []
-    if descriptions:
-        description = descriptions[0]
-    advantages = full_data.get("advantages") or []
-    characteristics = full_data.get("characteristics") or []
-    photos = full_data.get("photos") or []
-    photo_src = photos[0] if photos else ""
-
-    def esc(s):
-        return (
-            str(s)
-            .replace("&", "&amp;")
-            .replace("<", "&lt;")
-            .replace(">", "&gt;")
-        )
-
-    advantages_html = "".join(f"<li>{esc(a)}</li>" for a in advantages)
-    rows_html = "".join(
-        f"<tr><td>{esc(c.get('name',''))}</td><td>{esc(c.get('value',''))}</td></tr>"
-        for c in characteristics
-    )
-    photo_html = f'<img src="{photo_src}" style="max-width:100%;border-radius:8px;" />' if photo_src else ""
-
-    html = f"""<!DOCTYPE html>
-<html lang="ru"><head><meta charset="UTF-8"><title>{esc(headline)}</title>
-<style>
-  body {{ font-family: Arial, sans-serif; padding: 32px; color: #222; }}
-  h1 {{ font-size: 24px; }}
-  table {{ border-collapse: collapse; margin-top: 16px; width: 100%; }}
-  td {{ border: 1px solid #ccc; padding: 6px 10px; font-size: 13px; }}
-  ul {{ padding-left: 20px; }}
-</style></head>
-<body>
-  {photo_html}
-  <h1>{esc(headline)}</h1>
-  <p>{esc(description)}</p>
-  <ul>{advantages_html}</ul>
-  <table>{rows_html}</table>
-  <script>window.onload = () => window.print();</script>
-</body></html>"""
-
-    resp = make_response(html)
-    resp.headers["Content-Type"] = "text/html; charset=utf-8"
-    return resp
+    return Response(render_print_html(data), mimetype="text/html")
 
 
 if __name__ == "__main__":
